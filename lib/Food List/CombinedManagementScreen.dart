@@ -59,24 +59,24 @@ class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
                 ),
 
                 // Search Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      filled: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    ),
-                    onChanged: (value) {
-                      setState(() {});
-                    },
-                  ),
-                ),
+                // Padding(
+                //   padding: const EdgeInsets.symmetric(horizontal: 16),
+                //   child: TextField(
+                //     controller: _searchController,
+                //     decoration: InputDecoration(
+                //       hintText: 'Search...',
+                //       prefixIcon: const Icon(Icons.search),
+                //       border: OutlineInputBorder(
+                //         borderRadius: BorderRadius.circular(10),
+                //       ),
+                //       filled: true,
+                //       contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                //     ),
+                //     onChanged: (value) {
+                //       setState(() {});
+                //     },
+                //   ),
+                // ),
                 const SizedBox(height: 16),
               ],
             ),

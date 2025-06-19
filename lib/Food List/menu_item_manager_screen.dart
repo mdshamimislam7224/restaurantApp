@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 import 'dart:convert';
 import 'Category.dart';
 import 'MenuItem.dart';
@@ -12,16 +13,21 @@ class MenuItemManagerScreen extends StatefulWidget {
 }
 
 class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
-  final String scriptUrl = "https://script.google.com/macros/s/AKfycbw65-MArw-eo0foir6XLKUqVXt466wvMlBGCkIUvFlhCq3SdRdqX_J5sTUG-5Lbxqy5Lg/exec";
+  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwhv8zAst7bodvCiHJHK2amhDYgZvVWbdYYYC4yoOVr7TcHCwXHrRy6L0CBWS-CsMfrZw/exec";
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-
+  final RefreshController _refreshController = RefreshController(initialRefresh: false);
   List<Category> categories = [];
   List<MenuItem> menuItems = [];
   Category? selectedCategory;
   MenuItem? editingItem;
   bool _loading = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _currentSearchTerm = '';
+  int _currentPage = 1;
+  bool _hasMoreItems = true;
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
@@ -33,6 +39,12 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
     setState(() => _loading = true);
     await Future.wait([fetchCategories(), fetchMenuItems()]);
     setState(() => _loading = false);
+  }
+  Future<void> _loadMoreItems() async {
+    if (!_hasMoreItems || _loading) return;
+
+    setState(() => _currentPage++);
+    await fetchMenuItems(loadMore: true);
   }
 
   Future<void> fetchCategories() async {
@@ -49,19 +61,75 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
     }
   }
 
-  Future<void> fetchMenuItems() async {
+  // Future<void> fetchMenuItems() async {
+  //   try {
+  //     final response = await http.get(Uri.parse("$scriptUrl?action=getMenuItems"));
+  //     if (response.statusCode == 200) {
+  //       final data = jsonDecode(response.body);
+  //       setState(() {
+  //         menuItems = (data as List).map((e) => MenuItem.fromJson(e)).toList();
+  //       });
+  //     }
+  //   } catch (e) {
+  //     print('Error fetching menu items: $e');
+  //   }
+  // }
+  Future<void> fetchMenuItems({bool loadMore = false}) async {
     try {
-      final response = await http.get(Uri.parse("$scriptUrl?action=getMenuItems"));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (!loadMore) {
         setState(() {
-          menuItems = (data as List).map((e) => MenuItem.fromJson(e)).toList();
+          _currentPage = 1;
+          _hasMoreItems = true;
+          if (!_refreshController.isRefresh) {
+            _loading = true;
+          }
         });
       }
+
+      setState(() => _loading = true);
+
+      final url = Uri.parse(
+          "$scriptUrl?action=getMenuItems" +
+              "&page=$_currentPage" +
+              "&limit=10" +
+              (_currentSearchTerm.isNotEmpty ? "&search=$_currentSearchTerm" : "") +
+              "&searchType=${_currentSearchTerm}"
+      );
+
+      final response = await http.get(url);
+      print('API URL: $url');
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        if (jsonResponse['status'] == 'success') {
+          final data = jsonResponse['data'];
+          final newItems = (data['items'] as List)
+              .map((e) => MenuItem.fromJson(e))
+              .toList();
+
+          setState(() {
+            if (loadMore) {
+              menuItems.addAll(newItems);
+            } else {
+              menuItems = newItems;
+            }
+            _hasMoreItems = data['hasMore'];
+            if (!loadMore) _currentPage = 1;
+            _currentPage++;
+          });
+        }
+      }
     } catch (e) {
-      print('Error fetching menu items: $e');
+      if (!loadMore) {
+        _refreshController.refreshFailed();
+      } else {
+        _refreshController.loadFailed();
+      }
+      rethrow;
+    } finally {
+      setState(() => _loading = false);
     }
   }
+
 
   Future<void> saveItem() async {
     if (!_formKey.currentState!.validate()) return;
@@ -145,17 +213,46 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth > 600;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: isWide ? _buildWideLayout() : _buildNarrowLayout(),
-          );
-        },
-      ),
+      body:
+      Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _currentSearchTerm = value;
+                });
+              },
+            ),
+          ),
+          Expanded(child:
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 600;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: isWide ? _buildWideLayout() : _buildNarrowLayout(),
+              );
+            },
+          ),
+          )
+          ]
+      )
+
+
 
     );
   }
@@ -211,20 +308,27 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
             Icon(Icons.restaurant_menu, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              "No Menu Items Yet",
+              _currentSearchTerm.isEmpty
+                  ? "No Menu Items Yet"
+                  : "No Items Found",
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: Colors.grey[600],
               ),
             ),
-            const SizedBox(height: 8),
-            const Text("Add your first menu item to get started"),
+            if (_currentSearchTerm.isEmpty) const SizedBox(height: 8),
+            if (_currentSearchTerm.isEmpty)
+              const Text("Add your first menu item to get started"),
           ],
         ),
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
+    return SmartRefresher(
+      controller: _refreshController,
+      enablePullDown: true,
+      enablePullUp: _hasMoreItems && _currentSearchTerm.isEmpty,
+      onRefresh: _onRefresh,
+      onLoading: _onLoadMore,
       child: ListView.separated(
         padding: const EdgeInsets.only(top: 8),
         itemCount: menuItems.length,
@@ -232,9 +336,10 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
         itemBuilder: (context, index) {
           final item = menuItems[index];
           return Dismissible(
-            key: ValueKey(item.id),
+            key: Key('menuItem_${item.id}'), // Unique key for each item
+            direction: DismissDirection.endToStart,
             background: Container(
-              color: Theme.of(context).colorScheme.errorContainer,
+              color: Colors.red,
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.only(right: 20),
               child: const Icon(Icons.delete, color: Colors.white),
@@ -252,13 +357,13 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(ctx).pop(true),
-                      child: const Text("Delete"),
+                      child: const Text("Delete", style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
               );
             },
-            onDismissed: (_) => deleteItem(item.id),
+            onDismissed: (direction) => deleteItem(item.id),
             child: InkWell(
               onTap: () {
                 setState(() {
@@ -280,6 +385,20 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
                 ),
                 child: Row(
                   children: [
+                    if (_currentSearchTerm == 'id') ...[
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '#${item.id}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,7 +442,32 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
       ),
     );
   }
-
+  Future<void> _onRefresh() async {
+    try {
+      await fetchMenuItems();
+      _refreshController.refreshCompleted();
+    } catch (e) {
+      _refreshController.refreshFailed();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Refresh failed: ${e.toString()}')),
+      );
+    }
+  }
+  Future<void> _onLoadMore() async {
+    try {
+      await fetchMenuItems(loadMore: true);
+      if (_hasMoreItems) {
+        _refreshController.loadComplete();
+      } else {
+        _refreshController.loadNoData();
+      }
+    } catch (e) {
+      _refreshController.loadFailed();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Load more failed: ${e.toString()}')),
+      );
+    }
+  }
   Widget _buildForm() {
     return Form(
       key: _formKey,

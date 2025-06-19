@@ -12,12 +12,14 @@ class CategoryManagerScreen extends StatefulWidget {
 
 class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
   final TextEditingController _nameController = TextEditingController();
-  final String scriptUrl = "https://script.google.com/macros/s/AKfycby8etaamXLtR0ZRCxgSEqH_yBws38vqzlFlh_INXdUbZdOYbhEjuQF8vTML-j_eLkPfdQ/exec";
+  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwhv8zAst7bodvCiHJHK2amhDYgZvVWbdYYYC4yoOVr7TcHCwXHrRy6L0CBWS-CsMfrZw/exec";
 
   List<Category> categories = [];
   Category? selectedCategory;
   bool _loading = false;
   final _formKey = GlobalKey<FormState>();
+  final TextEditingController _searchController = TextEditingController();
+  String _currentSearchTerm = '';
 
   @override
   void initState() {
@@ -147,18 +149,45 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth > 400;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: isWide ? _buildWideLayout() : _buildNarrowLayout(),
-          );
-        },
+      body: Column(
+        children: [
+          // Search Bar - Added at the top
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _currentSearchTerm = value;
+                });
+              },
+            ),
+          ),
+          // Main Content Area
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 400;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: isWide ? _buildWideLayout() : _buildNarrowLayout(),
+                );
+              },
+            ),
+          ),
+        ],
       ),
-
     );
   }
 
@@ -370,6 +399,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 }
