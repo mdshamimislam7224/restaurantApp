@@ -1,7 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Food%20List/CategoryManagerScreen.dart';
+import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
+import 'package:restaurant_inventory/sell/SellScreen.dart';
 
+import '../DashboardScreen.dart';
 import '../Food List/CombinedManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
 
@@ -15,8 +18,11 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
-    MenuItemManagerScreen(),
+    SellScreen(),
+    SellRecordScreen(),
+    DashboardScreen(),
     CombinedManagementScreen(),
+    MenuItemManagerScreen(),
     CategoryManagerScreen(),
   ];
   final List<String> _pageTitles = [
@@ -45,6 +51,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     setState(() {
       _selectedDrawerIndex = index;
     });
+
     Navigator.pop(context);
   }
 
@@ -59,6 +66,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
               icon: Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () {
                 Navigator.pop(context);
+                //Navigator.push(context, MaterialPageRoute(builder: (context) => DashBoard_DetailsBoticeBoard(notices: notices),),);
               },
             ),
           ),
