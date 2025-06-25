@@ -40,7 +40,7 @@ class DBHelper {
         await db.execute('''
         CREATE TABLE sales_items(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          saleId INTEGER,
+          saleId TEXT,
           menuItemId INTEGER,
           name TEXT,
           quantity INTEGER,
@@ -52,6 +52,35 @@ class DBHelper {
       },
     );
   }
+
+
+  // DBHelper.dart
+  static Future<List<Map<String, dynamic>>> getAllSalesWithItems() async {
+    final dbClient = await db;
+    List<Map<String, dynamic>> sales = await dbClient.query('sales');
+
+    List<Map<String, dynamic>> salesWithItems = [];
+
+    for (var sale in sales) {
+      String saleId = sale['id'];
+
+      // Get items for each sale
+      List<Map<String, dynamic>> items = await dbClient.query(
+        'sales_items',
+        where: 'saleId = ?',
+        whereArgs: [saleId],
+      );
+
+      // Append items into the sale map
+      Map<String, dynamic> saleWithItems = Map<String, dynamic>.from(sale);
+      saleWithItems['items'] = items;
+
+      salesWithItems.add(saleWithItems);
+    }
+
+    return salesWithItems;
+  }
+
 
   static Future<void> insertMenuItems(List<Map<String, dynamic>> items) async {
     final dbClient = await db;
@@ -92,7 +121,7 @@ class DBHelper {
       // 2. Insert each item into `sales_items`
       for (var item in items) {
         await txn.insert('sales_items', {
-          'saleId': saleId,
+          'saleId': sale_ID,
           'menuItemId': item['id'],
           'name': item['name'],
           'quantity': item['quantity'],
