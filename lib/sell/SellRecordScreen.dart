@@ -1,5 +1,6 @@
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../localDB/DBHelper.dart';
 
 class SellRecordScreen extends StatefulWidget {
@@ -12,6 +13,7 @@ class SellRecordScreen extends StatefulWidget {
 class _SellRecordScreenState extends State<SellRecordScreen> {
   List<Map<String, dynamic>> sales = [];
   List<Map<String, dynamic>> saleItems = [];
+  List<Map<String, dynamic>> filteredSales = [];
   List<String> categoryNames = [];
   String? selectedCategory;
   List<Map<String, dynamic>> menuItems = [];
@@ -19,8 +21,11 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   List<Map<String, dynamic>> selectedItems = [];
   int quantity = 1;
   final TextEditingController _discountController = TextEditingController(text: "0");
-
-
+  final Map<String, bool> _expandedItems = {}; // Track expanded state for each sale
+  String? _currentlyExpandedId;
+  DateTime? _selectedFromDate;
+  DateTime? _selectedToDate;
+  double _totalSalesAmount = 0.0;
   @override
   void initState() {
     super.initState();
@@ -28,25 +33,74 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
     loadCategories();
   }
 
-
-  double get subtotal => selectedItems.fold(0, (sum, item) => sum + (item['total'] as double));
-  double get discount => double.tryParse(_discountController.text) ?? 0;
-  double get grandTotal => subtotal - discount;
-
   Future<void> loadSales() async {
     final db = await DBHelper.db;
     final result = await db.query('sales', orderBy: 'date DESC');
     setState(() {
       sales = result;
-      print("Sales: $sales");
+      // Initialize expanded state for each sale
+      for (var sale in sales) {
+        _expandedItems[sale['id']] = _expandedItems[sale['id']] ?? false;
+      }
     });
   }
-
+  void _calculateTotalAmount() {
+    _totalSalesAmount = filteredSales.fold(0.0, (sum, sale) => sum + (sale['total'] as double));
+  }
   Future<void> loadSaleItems(String saleId) async {
     final db = await DBHelper.db;
     final result = await db.query('sales_items', where: 'saleId = ?', whereArgs: [saleId]);
     setState(() {
       saleItems = result;
+    });
+  }
+  Future<void> _selectFromDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedFromDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _selectedFromDate) {
+      setState(() {
+        _selectedFromDate = picked;
+        _applyDateFilter();
+      });
+    }
+  }
+  Future<void> _selectToDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedToDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _selectedToDate) {
+      setState(() {
+        _selectedToDate = picked;
+        _applyDateFilter();
+      });
+    }
+  }
+  void _applyDateFilter() {
+    if (_selectedFromDate == null && _selectedToDate == null) {
+      filteredSales = List.from(sales);
+    } else {
+      filteredSales = sales.where((sale) {
+        final saleDate = DateTime.parse(sale['date']);
+        bool afterFrom = _selectedFromDate == null || saleDate.isAfter(_selectedFromDate!.subtract(const Duration(days: 1)));
+        bool beforeTo = _selectedToDate == null || saleDate.isBefore(_selectedToDate!.add(const Duration(days: 1)));
+        return afterFrom && beforeTo;
+      }).toList();
+    }
+    _calculateTotalAmount();
+  }
+  void _clearDateFilter() {
+    setState(() {
+      _selectedFromDate = null;
+      _selectedToDate = null;
+      filteredSales = List.from(sales);
+      _calculateTotalAmount();
     });
   }
 
@@ -57,212 +111,270 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
     loadSales();
   }
 
-
-
   void showUpdateDialog(Map<String, dynamic> sale) async {
     final discountController = TextEditingController(text: sale['discount'].toString());
     String selectedMethod = sale['paymentMethod'] ?? 'Cash';
     String selectedStatus = sale['paymentStatus'] ?? 'Unpaid';
-    double total = sale['total'] ?? 0.0;
     int quantity = 1;
     await loadSaleItems(sale['id']);
-    List<Map<String, dynamic>> existingItems = List.from(saleItems); // Editable
-
-    List<Map<String, dynamic>> newItems = []; // For adding new
-
-
+    List<Map<String, dynamic>> existingItems = saleItems.map((e) => Map<String, dynamic>.from(e)).toList();
     String? selectedCategoryInDialog;
     Map<String, dynamic>? selectedMenuItemInDialog;
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
-            void recalculateTotal() {
-              total = 0.0;
-              for (var item in existingItems) {
-                total += item['quantity'] * item['price'];
-              }
-              for (var item in newItems) {
-                total += item['quantity'] * item['price'];
-              }
-              total -= double.tryParse(discountController.text) ?? 0.0;
-              if (total < 0) total = 0.0;
+            double subtotal = 0;
+            double discount = 0;
+            double grandTotal = 0;
+            void recalculateTotals() {
+              subtotal = existingItems.fold(0, (sum, item) => sum + (item['quantity'] * item['price']));
+              discount = double.tryParse(discountController.text) ?? 0.0;
+              grandTotal = subtotal - discount;
+              if (grandTotal < 0) grandTotal = 0;
             }
-            recalculateTotal();
-            return AlertDialog(
-              title: const Text("Update Sale Entry"),
-              content: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    // Dropdown for Category
-                    DropdownSearch<String>(
-                      items: categoryNames,
-                      selectedItem: selectedCategoryInDialog,
-                      popupProps: const PopupProps.menu(showSearchBox: true),
-                      dropdownBuilder: (_, item) => Text(item ?? "Select Category"),
-                      onChanged: (val) async {
-                        selectedCategoryInDialog = val;
-                        await loadMenuItemsByCategory(val!);
-                        setStateDialog(() {});
-                      },
-                    ),
-                    const SizedBox(height: 10),
+            recalculateTotals();
 
-                    // Dropdown for Menu Item
-                    DropdownSearch<Map<String, dynamic>>(
-                      items: menuItems,
-                      selectedItem: selectedMenuItemInDialog,
-                      itemAsString: (item) => item['name'],
-                      popupProps: PopupProps.menu(showSearchBox: true),
-                      dropdownBuilder: (_, item) => Text(item?['name'] ?? "Select Menu Item"),
-                      onChanged: (val) {
-                        setStateDialog(() => selectedMenuItemInDialog = val);
-                      },
-                    ),
+            void addOrUpdateItem() {
+              if (selectedMenuItemInDialog != null) {
+                final existingIndex = existingItems.indexWhere(
+                        (item) => item['menuItemId'] == selectedMenuItemInDialog!['id']
+                );
 
-                    Row(
+                if (existingIndex != -1) {
+                  setStateDialog(() {
+                    existingItems[existingIndex]['quantity'] += quantity;
+                    existingItems[existingIndex]['total'] =
+                        existingItems[existingIndex]['quantity'] *
+                            existingItems[existingIndex]['price'];
+                    recalculateTotals();
+                  });
+                } else {
+                  setStateDialog(() {
+                    existingItems.add({
+                      'menuItemId': selectedMenuItemInDialog!['id'],
+                      'name': selectedMenuItemInDialog!['name'],
+                      'price': selectedMenuItemInDialog!['price'],
+                      'quantity': quantity,
+                      'total': selectedMenuItemInDialog!['price'] * quantity,
+                    });
+                    recalculateTotals();
+                  });
+                }
+
+                quantity = 1;
+                selectedMenuItemInDialog = null;
+              }
+            }
+            return Dialog(
+              insetPadding: EdgeInsets.zero,
+              backgroundColor: Colors.white,
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height,
+                width: MediaQuery.of(context).size.width,
+                child: Scaffold(
+                  appBar: AppBar(
+                    title:  Text("Update: ${sale['id']}"),
+                    automaticallyImplyLeading: false,
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    ],
+                  ),
+                  body: SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
                       children: [
-                        const Text("Qty: "),
-                        IconButton(
-                          icon: const Icon(Icons.remove),
-                          onPressed: () {
-                            if (quantity > 1) setStateDialog(() => quantity--);
+                        // Category Dropdown (unchanged)
+                        DropdownSearch<String>(
+                          items: categoryNames,
+                          selectedItem: selectedCategoryInDialog,
+                          popupProps: const PopupProps.menu(showSearchBox: true),
+                          dropdownBuilder: (_, item) => Text(item ?? "Select Category"),
+                          onChanged: (val) async {
+                            selectedCategoryInDialog = val;
+                            await loadMenuItemsByCategory(val!);
+                            setStateDialog(() {});
                           },
                         ),
-                        Text(quantity.toString()),
-                        IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () {
-                            setStateDialog(() => quantity++);
+                        const SizedBox(height: 10),
+
+                        // Menu Item Dropdown (unchanged)
+                        DropdownSearch<Map<String, dynamic>>(
+                          items: menuItems,
+                          selectedItem: selectedMenuItemInDialog,
+                          itemAsString: (item) => item['name'],
+                          popupProps: const PopupProps.menu(showSearchBox: true),
+                          dropdownBuilder: (_, item) => Text(item?['name'] ?? "Select Menu Item"),
+                          onChanged: (val) {
+                            setStateDialog(() => selectedMenuItemInDialog = val);
                           },
                         ),
-                        const Spacer(),
+                        const SizedBox(height: 20),
+                        // Quantity Controls (unchanged)
+                        Row(
+                          children: [
+                            const Text("Quantity: "),
+                            IconButton(
+                              icon: const Icon(Icons.remove),
+                              onPressed: () {
+                                if (quantity > 1) setStateDialog(() => quantity--);
+                              },
+                            ),
+                            Text(quantity.toString()),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () {
+                                setStateDialog(() => quantity++);
+                              },
+                            ),
+                            const Spacer(),
+                            ElevatedButton(
+                              onPressed: addOrUpdateItem, // Updated function
+                              child: const Text("Add Item"),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+
+                        // Existing Items List (unchanged)
+                        const Text("Existing Items (Edit/Delete):"),
+                        ...existingItems.map((item) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text("${item['name']}"),
+                                      Text("৳${item['price']} x ${item['quantity']} = ৳${item['total']}"),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.remove),
+                                          onPressed: () {
+                                            if (item['quantity'] > 1) {
+                                              setStateDialog(() {
+                                                item['quantity'] -= 1;
+                                                item['total'] = item['quantity'] * item['price'];
+                                                recalculateTotals();
+                                              });
+                                            }
+                                          },
+                                        ),
+                                        Text(item['quantity'].toString()),
+                                        IconButton(
+                                          icon: const Icon(Icons.add),
+                                          onPressed: () {
+                                            setStateDialog(() {
+                                              item['quantity'] += 1;
+                                              item['total'] = item['quantity'] * item['price'];
+                                              recalculateTotals();
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () {
+                                        setStateDialog(() {
+                                          existingItems.remove(item);
+                                          recalculateTotals();
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                )
+                              ],
+                            ),
+                          );
+                        }),
+                        const Divider(),
+
+                        // Discount Input (unchanged)
+                        TextField(
+                          controller: discountController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: "Discount"),
+                          onChanged: (_) => setStateDialog(() => recalculateTotals()),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Payment Method Dropdown (unchanged)
+                        DropdownButtonFormField<String>(
+                          value: selectedMethod,
+                          items: ["Cash", "bKash", "Card", "Nagad"]
+                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                              .toList(),
+                          onChanged: (val) => setStateDialog(() => selectedMethod = val!),
+                          decoration: const InputDecoration(labelText: "Payment Method"),
+                        ),
+
+                        // Payment Status Dropdown (unchanged)
+                        DropdownButtonFormField<String>(
+                          value: selectedStatus,
+                          items: ["Unpaid", "Paid"]
+                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                              .toList(),
+                          onChanged: (val) => setStateDialog(() => selectedStatus = val!),
+                          decoration: const InputDecoration(labelText: "Status"),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Summary (unchanged)
+                        Text("Subtotal: ৳${subtotal.toStringAsFixed(2)}"),
+                        Text("Discount: ৳${discount.toStringAsFixed(2)}"),
+                        Text(
+                          "Total Payable: ৳${grandTotal.toStringAsFixed(2)}",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Update Button (unchanged)
                         ElevatedButton(
-                          onPressed: () {
-                            if (selectedMenuItemInDialog != null) {
-                              newItems.add({
-                                'id': selectedMenuItemInDialog!['id'],
-                                'name': selectedMenuItemInDialog!['name'],
-                                'price': selectedMenuItemInDialog!['price'],
-                                'quantity': quantity,
-                                'total': selectedMenuItemInDialog!['price'] * quantity,
-                              });
-                              quantity = 1;
-                              selectedMenuItemInDialog = null;
-                              setStateDialog(recalculateTotal);
-                            }
+                          onPressed: () async {
+                            final finalItems = existingItems.map((e) => {
+                              'id': e['menuItemId'] ?? e['id'],
+                              'name': e['name'],
+                              'price': e['price'],
+                              'quantity': e['quantity'],
+                              'total': e['total']
+                            }).toList();
+
+                            await DBHelper.updateFullSale(
+                              id: sale['id'],
+                              paymentMethod: selectedMethod,
+                              paymentStatus: selectedStatus,
+                              discount: discount,
+                              total: grandTotal,
+                              items: finalItems,
+                            );
+
+                            Navigator.pop(context);
+                            loadSales();
                           },
-                          child: const Text("Add"),
+                          child: const Text("Update Sale"),
                         ),
                       ],
                     ),
-
-                    const Divider(),
-
-                    const Text("Existing Items (Edit Qty):"),
-                    ...existingItems.map((item) {
-                      final qtyCtrl = TextEditingController(text: item['quantity'].toString());
-                      return ListTile(
-                        title: Text(item['name']),
-                        subtitle: Text("৳${item['price']}"),
-                        trailing: SizedBox(
-                          width: 60,
-                          child: TextField(
-                            controller: qtyCtrl,
-                            keyboardType: TextInputType.number,
-                            onChanged: (val) {
-                              item['quantity'] = int.tryParse(val) ?? 1;
-                              item['total'] = item['quantity'] * item['price'];
-                              setStateDialog(recalculateTotal);
-                            },
-                          ),
-                        ),
-                      );
-                    }),
-
-                    const Divider(),
-
-                    const Text("New Added Items:"),
-                    ...newItems.map((item) => ListTile(
-                      title: Text("${item['name']} x${item['quantity']}"),
-                      subtitle: Text("৳${item['price']} x ${item['quantity']} = ৳${item['total']}"),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () {
-                          setStateDialog(() {
-                            newItems.remove(item);
-                            recalculateTotal();
-                          });
-                        },
-                      ),
-                    )),
-
-                    TextField(
-                      controller: discountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: "Discount"),
-                      onChanged: (_) => setStateDialog(recalculateTotal),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    DropdownButtonFormField<String>(
-                      value: selectedMethod,
-                      items: ["Cash", "bKash", "Card", "Nagad"]
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                          .toList(),
-                      onChanged: (val) => setStateDialog(() => selectedMethod = val!),
-                      decoration: const InputDecoration(labelText: "Payment Method"),
-                    ),
-
-                    DropdownButtonFormField<String>(
-                      value: selectedStatus,
-                      items: ["Unpaid", "Paid"]
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                          .toList(),
-                      onChanged: (val) => setStateDialog(() => selectedStatus = val!),
-                      decoration: const InputDecoration(labelText: "Status"),
-                    ),
-
-                    const SizedBox(height: 10),
-                    Text("Total Payable: ৳${total.toStringAsFixed(2)}",
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ],
+                  ),
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final finalItems = [
-                      ...existingItems.map((e) => {
-                        'id': e['menuItemId'] ?? e['id'],
-                        'name': e['name'],
-                        'price': e['price'],
-                        'quantity': e['quantity'],
-                        'total': e['quantity'] * e['price']
-                      }),
-                      ...newItems
-                    ];
-
-                    await DBHelper.updateFullSale(
-                      id: sale['id'],
-                      paymentMethod: selectedMethod,
-                      paymentStatus: selectedStatus,
-                      discount: double.tryParse(discountController.text) ?? 0.0,
-                      total: total,
-                      items: finalItems,
-                    );
-                    Navigator.pop(context);
-                    loadSales();
-                  },
-                  child: const Text("Update"),
-                ),
-              ],
             );
           },
         );
@@ -270,22 +382,6 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
     );
   }
 
-
-  void addItemToCart() {
-    if (selectedMenuItem != null && quantity > 0) {
-      setState(() {
-        selectedItems.add({
-          'id': selectedMenuItem!['id'],
-          'name': selectedMenuItem!['name'],
-          'price': selectedMenuItem!['price'],
-          'quantity': quantity,
-          'total': selectedMenuItem!['price'] * quantity
-        });
-        quantity = 1;
-        selectedMenuItem = null;
-      });
-    }
-  }
   Future<void> loadCategories() async {
     final allItems = await DBHelper.getMenuItems();
     final uniqueCategories = allItems.map((e) => e['categoryName'].toString()).toSet().toList();
@@ -303,27 +399,181 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Sell Records")),
-      body: ListView.builder(
-        itemCount: sales.length,
-        itemBuilder: (context, index) {
-          final sale = sales[index];
-          return Card(
-            child: ListTile(
-              title: Text("ID: ${sale['id']}, Total: ${sale['total']}"),
-              subtitle: Text("Date: ${sale['date']} - ${sale['paymentStatus']}"),
-              onTap: () => showUpdateDialog(sale),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                onPressed: () => deleteSale(sale['id']),
+      appBar: AppBar(
+        title: const Text("Sell Records"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_alt),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Filter by Date"),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        title: Text(_selectedFromDate == null
+                            ? "Select From Date"
+                            : "From: ${DateFormat('yyyy/MM-dd').format(_selectedFromDate!)}"),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () => _selectFromDate(context),
+                      ),
+                      ListTile(
+                        title: Text(_selectedToDate == null
+                            ? "Select To Date"
+                            : "To: ${DateFormat('yyyy-MM-dd').format(_selectedToDate!)}"),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () => _selectToDate(context),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: _clearDateFilter,
+                      child: const Text("Clear Filter"),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Apply"),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Total Sales Card
+          Card(
+            margin: const EdgeInsets.all(8.0),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const Text(
+                    "Total Sales",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "৳${_totalSalesAmount.toStringAsFixed(2)}",
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
+                  ),
+                  if (_selectedFromDate != null || _selectedToDate != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        _selectedFromDate != null && _selectedToDate != null
+                            ? "From ${DateFormat('yyyy-MM-dd').format(_selectedFromDate!)} to ${DateFormat('yyyy-MM-dd').format(_selectedToDate!)}"
+                            : _selectedFromDate != null
+                            ? "From ${DateFormat('yyyy-MM-dd').format(_selectedFromDate!)}"
+                            : "To ${DateFormat('yyyy-MM-dd').format(_selectedToDate!)}",
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ),
+                ],
               ),
             ),
-          );
-        },
+          ),
+          // Sales List
+          Expanded(
+            child: ListView.builder(
+              itemCount: filteredSales.length,
+              itemBuilder: (context, index) {
+                final sale = filteredSales[index];
+                final isExpanded = _currentlyExpandedId == sale['id'];
+
+                return Dismissible(
+                  key: Key(sale['id']),
+                  background: Container(color: Colors.red),
+                  direction: DismissDirection.endToStart,
+                  confirmDismiss: (direction) async {
+                    return await showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Confirm Delete"),
+                        content: const Text("Are you sure you want to delete this sale?"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text("Cancel"),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  onDismissed: (direction) {
+                    deleteSale(sale['id']);
+                    if (isExpanded) {
+                      _currentlyExpandedId = null;
+                    }
+                  },
+                  child: Card(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          title: Text("ID: ${sale['id']}"),
+                          subtitle: Text("৳${sale['total']} - ${sale['paymentStatus']}"),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => showUpdateDialog(sale),
+                          ),
+                          onTap: () async {
+                            setState(() {
+                              if (isExpanded) {
+                                _currentlyExpandedId = null;
+                              } else {
+                                _currentlyExpandedId = sale['id'];
+                              }
+                            });
+                            if (_currentlyExpandedId == sale['id']) {
+                              await loadSaleItems(sale['id']);
+                            }
+                          },
+                        ),
+                        if (isExpanded)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                            child: Column(
+                              children: [
+                                const Divider(),
+                                if (saleItems.isEmpty)
+                                  const Padding(
+                                    padding: EdgeInsets.all(8.0),
+                                    child: CircularProgressIndicator(),
+                                  )
+                                else
+                                  ...saleItems.map((item) => ListTile(
+                                    title: Text(item['name']),
+                                    subtitle: Text("${item['quantity']} × ৳${item['price']} = ৳${item['total']}"),
+                                    dense: true,
+                                    visualDensity: const VisualDensity(vertical: -4),
+                                  )),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Date: ${sale['date']}",
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
