@@ -1,6 +1,5 @@
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../localDB/DBHelper.dart';
 
 class SellRecordScreen extends StatefulWidget {
@@ -23,9 +22,6 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   final TextEditingController _discountController = TextEditingController(text: "0");
   final Map<String, bool> _expandedItems = {}; // Track expanded state for each sale
   String? _currentlyExpandedId;
-  DateTime? _selectedFromDate;
-  DateTime? _selectedToDate;
-  double _totalSalesAmount = 0.0;
   @override
   void initState() {
     super.initState();
@@ -44,63 +40,12 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
       }
     });
   }
-  void _calculateTotalAmount() {
-    _totalSalesAmount = filteredSales.fold(0.0, (sum, sale) => sum + (sale['total'] as double));
-  }
+
   Future<void> loadSaleItems(String saleId) async {
     final db = await DBHelper.db;
     final result = await db.query('sales_items', where: 'saleId = ?', whereArgs: [saleId]);
     setState(() {
       saleItems = result;
-    });
-  }
-  Future<void> _selectFromDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedFromDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _selectedFromDate) {
-      setState(() {
-        _selectedFromDate = picked;
-        _applyDateFilter();
-      });
-    }
-  }
-  Future<void> _selectToDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedToDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _selectedToDate) {
-      setState(() {
-        _selectedToDate = picked;
-        _applyDateFilter();
-      });
-    }
-  }
-  void _applyDateFilter() {
-    if (_selectedFromDate == null && _selectedToDate == null) {
-      filteredSales = List.from(sales);
-    } else {
-      filteredSales = sales.where((sale) {
-        final saleDate = DateTime.parse(sale['date']);
-        bool afterFrom = _selectedFromDate == null || saleDate.isAfter(_selectedFromDate!.subtract(const Duration(days: 1)));
-        bool beforeTo = _selectedToDate == null || saleDate.isBefore(_selectedToDate!.add(const Duration(days: 1)));
-        return afterFrom && beforeTo;
-      }).toList();
-    }
-    _calculateTotalAmount();
-  }
-  void _clearDateFilter() {
-    setState(() {
-      _selectedFromDate = null;
-      _selectedToDate = null;
-      filteredSales = List.from(sales);
-      _calculateTotalAmount();
     });
   }
 
@@ -402,178 +347,96 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Sell Records"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_alt),
-            onPressed: () {
-              showDialog(
+      appBar: AppBar(title: const Text("Sell Records")),
+      body: ListView.builder(
+        itemCount: sales.length,
+        itemBuilder: (context, index) {
+          final sale = sales[index];
+          final isExpanded = _currentlyExpandedId == sale['id'];
+
+          return Dismissible(
+            key: Key(sale['id']),
+            background: Container(color: Colors.red),
+            direction: DismissDirection.endToStart,
+            confirmDismiss: (direction) async {
+              return await showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: const Text("Filter by Date"),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        title: Text(_selectedFromDate == null
-                            ? "Select From Date"
-                            : "From: ${DateFormat('yyyy/MM-dd').format(_selectedFromDate!)}"),
-                        trailing: const Icon(Icons.calendar_today),
-                        onTap: () => _selectFromDate(context),
-                      ),
-                      ListTile(
-                        title: Text(_selectedToDate == null
-                            ? "Select To Date"
-                            : "To: ${DateFormat('yyyy-MM-dd').format(_selectedToDate!)}"),
-                        trailing: const Icon(Icons.calendar_today),
-                        onTap: () => _selectToDate(context),
-                      ),
-                    ],
-                  ),
+                  title: const Text("Confirm Delete"),
+                  content: const Text("Are you sure you want to delete this sale?"),
                   actions: [
                     TextButton(
-                      onPressed: _clearDateFilter,
-                      child: const Text("Clear Filter"),
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text("Cancel"),
                     ),
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text("Apply"),
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text("Delete", style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
               );
             },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Total Sales Card
-          Card(
-            margin: const EdgeInsets.all(8.0),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
+            onDismissed: (direction) {
+              deleteSale(sale['id']);
+              if (isExpanded) {
+                _currentlyExpandedId = null;
+              }
+            },
+            child: Card(
               child: Column(
                 children: [
-                  const Text(
-                    "Total Sales",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ListTile(
+                    title: Text("ID: ${sale['id']}"),
+                    subtitle: Text("Total: ৳${sale['total']} - ${sale['paymentStatus']}"),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blue),
+                      onPressed: () => showUpdateDialog(sale),
+                    ),
+                    onTap: () async {
+                      setState(() {
+                        if (isExpanded) {
+                          _currentlyExpandedId = null; // Collapse if already expanded
+                        } else {
+                          _currentlyExpandedId = sale['id']; // Expand this item
+                        }
+                      });
+                      if (_currentlyExpandedId == sale['id']) {
+                        await loadSaleItems(sale['id']);
+                      }
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "৳${_totalSalesAmount.toStringAsFixed(2)}",
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
-                  ),
-                  if (_selectedFromDate != null || _selectedToDate != null)
+                  if (isExpanded)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        _selectedFromDate != null && _selectedToDate != null
-                            ? "From ${DateFormat('yyyy-MM-dd').format(_selectedFromDate!)} to ${DateFormat('yyyy-MM-dd').format(_selectedToDate!)}"
-                            : _selectedFromDate != null
-                            ? "From ${DateFormat('yyyy-MM-dd').format(_selectedFromDate!)}"
-                            : "To ${DateFormat('yyyy-MM-dd').format(_selectedToDate!)}",
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Column(
+                        children: [
+                          const Divider(),
+                          if (saleItems.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: CircularProgressIndicator(),
+                            )
+                          else
+                            ...saleItems.map((item) => ListTile(
+                              title: Text(item['name']),
+                              subtitle: Text("${item['quantity']} × ৳${item['price']} = ৳${item['total']}"),
+                              dense: true,
+                              visualDensity: const VisualDensity(vertical: -4),
+                            )),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Date: ${sale['date']}",
+
+                          ),
+                        ],
                       ),
                     ),
                 ],
               ),
             ),
-          ),
-          // Sales List
-          Expanded(
-            child: ListView.builder(
-              itemCount: filteredSales.length,
-              itemBuilder: (context, index) {
-                final sale = filteredSales[index];
-                final isExpanded = _currentlyExpandedId == sale['id'];
-
-                return Dismissible(
-                  key: Key(sale['id']),
-                  background: Container(color: Colors.red),
-                  direction: DismissDirection.endToStart,
-                  confirmDismiss: (direction) async {
-                    return await showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("Confirm Delete"),
-                        content: const Text("Are you sure you want to delete this sale?"),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text("Cancel"),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text("Delete", style: TextStyle(color: Colors.red)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  onDismissed: (direction) {
-                    deleteSale(sale['id']);
-                    if (isExpanded) {
-                      _currentlyExpandedId = null;
-                    }
-                  },
-                  child: Card(
-                    child: Column(
-                      children: [
-                        ListTile(
-                          title: Text("ID: ${sale['id']}"),
-                          subtitle: Text("৳${sale['total']} - ${sale['paymentStatus']}"),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => showUpdateDialog(sale),
-                          ),
-                          onTap: () async {
-                            setState(() {
-                              if (isExpanded) {
-                                _currentlyExpandedId = null;
-                              } else {
-                                _currentlyExpandedId = sale['id'];
-                              }
-                            });
-                            if (_currentlyExpandedId == sale['id']) {
-                              await loadSaleItems(sale['id']);
-                            }
-                          },
-                        ),
-                        if (isExpanded)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                            child: Column(
-                              children: [
-                                const Divider(),
-                                if (saleItems.isEmpty)
-                                  const Padding(
-                                    padding: EdgeInsets.all(8.0),
-                                    child: CircularProgressIndicator(),
-                                  )
-                                else
-                                  ...saleItems.map((item) => ListTile(
-                                    title: Text(item['name']),
-                                    subtitle: Text("${item['quantity']} × ৳${item['price']} = ৳${item['total']}"),
-                                    dense: true,
-                                    visualDensity: const VisualDensity(vertical: -4),
-                                  )),
-                                const SizedBox(height: 8),
-                                Text(
-                                  "Date: ${sale['date']}",
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
