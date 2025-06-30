@@ -49,6 +49,16 @@ class DBHelper {
           FOREIGN KEY (saleId) REFERENCES sales(id)
         )
       ''');
+        await db.execute('''
+        CREATE TABLE costing_records(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date TEXT,
+          type TEXT,
+          description TEXT,
+          amount REAL,
+          paymentStatus TEXT
+        )
+      ''');
       },
     );
   }
@@ -184,13 +194,86 @@ class DBHelper {
       }
     });
   }
-
-
-
-
+  static Future<void> updatePaymentStatus({
+    required String id,
+    required String paymentStatus,
+  }) async {
+    final db = await DBHelper.db;
+    await db.update(
+      'sales',
+      {'paymentStatus': paymentStatus},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 
   static Future<void> clearMenuItems() async {
     final dbClient = await db;
     await dbClient.delete('menu_items');
   }
+  // Costing Db
+  static Future<void> insertCostingRecord({
+    required String date,
+    required String type,
+    required String description,
+    required double amount,
+    required String paymentStatus,
+  }) async {
+    final dbClient = await db;
+    await dbClient.insert('costing_records', {
+      'date': date,
+      'type': type,
+      'description': description,
+      'amount': amount,
+      'paymentStatus': paymentStatus,
+    });
+  }
+  static Future<List<Map<String, dynamic>>> getCostingRecords() async {
+    final dbClient = await db;
+    return await dbClient.query('costing_records', orderBy: 'date DESC');
+  }
+  static Future<void> deleteCostingRecord(int id) async {
+    final dbClient = await db;
+    await dbClient.delete('costing_records', where: 'id = ?', whereArgs: [id]);
+  }
+  static Future<void> updateCostingRecord({
+    required int id,
+    required String date,
+    required String type,
+    required String description,
+    required double amount,
+    required String paymentStatus,
+  }) async {
+    final dbClient = await db;
+    await dbClient.update(
+      'costing_records',
+      {
+        'date': date,
+        'type': type,
+        'description': description,
+        'amount': amount,
+        'paymentStatus': paymentStatus,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+
+  static Future<void> updateCostingPaymentStatus({
+    required int id,
+    required String paymentStatus,
+  }) async {
+    final db = await DBHelper.db;
+    await db.update(
+      'costing_records',
+      {'paymentStatus': paymentStatus},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+
+
+
 }

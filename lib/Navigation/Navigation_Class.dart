@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Food%20List/CategoryManagerScreen.dart';
+import 'package:restaurant_inventory/Staff/StaffScreen.dart';
+import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
 import 'package:restaurant_inventory/sell/SellScreen.dart';
 
@@ -18,6 +20,8 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
+    StaffScreen(),
+    CostingRecordScreen(),
     SellScreen(),
     SellRecordScreen(),
     DashboardScreen(),
