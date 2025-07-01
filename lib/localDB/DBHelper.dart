@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -59,10 +61,29 @@ class DBHelper {
           paymentStatus TEXT
         )
       ''');
+
+        await db.execute('''
+    CREATE TABLE staff_signup (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    nid TEXT,
+    phone TEXT,
+    position TEXT,
+    present_address TEXT,
+    permanent_address TEXT,
+    salary TEXT,
+    staff_id TEXT,
+    join_date TEXT,
+    email TEXT,
+    guardian_info TEXT,
+    info TEXT,
+    profileImage TEXT, -- base64 string
+    imagesData TEXT -- base64 list (JSON encoded)
+  )
+''');
       },
     );
   }
-
 
   // DBHelper.dart
   static Future<List<Map<String, dynamic>>> getAllSalesWithItems() async {
@@ -272,8 +293,105 @@ class DBHelper {
       whereArgs: [id],
     );
   }
+  //Staff Sign Up (Add Staff)
+  static Future<bool> insertStaff(Map<String, dynamic> staffData) async {
+    try {
+      final db = await DBHelper.db;
+
+      // Convert images to JSON strings
+      final profileImageJson = jsonEncode(staffData['profileImage']);
+      final imagesDataJson = jsonEncode(staffData['imagesData']);
+
+      final result = await db.insert('staff_signup', {
+        'name': staffData['name'],
+        'nid': staffData['nid'],
+        'phone': staffData['phone'],
+        'position': staffData['position'],
+        'present_address': staffData['present_address'],
+        'permanent_address': staffData['permanent_address'],
+        'salary': staffData['salary'],
+        'staff_id': staffData['staff_id'],
+        'join_date': staffData['join_date'],
+        'email': staffData['email'],
+        'guardian_info': staffData['guardian_info'],
+        'info': staffData['info'],
+        'profileImage': profileImageJson,
+        'imagesData': imagesDataJson,
+      });
+
+      return result > 0; // true if insert succeeded
+    } catch (e) {
+      print('Insert Error: $e');
+      return false;
+    }
+  }
 
 
+  static Future<List<Map<String, dynamic>>> getAllStaff() async {
+    final db = await DBHelper.db;
+    final List<Map<String, dynamic>> allStaff = [];
+
+    // First get all basic info without images
+    final basicInfoList = await db.query(
+        'staff_signup',
+        columns: ['id', 'name', 'nid', 'phone', 'position', 'present_address',
+          'permanent_address', 'salary', 'staff_id', 'join_date', 'email',
+          'guardian_info', 'info']
+    );
+
+    // Then get images for each staff member one by one
+    for (var staff in basicInfoList) {
+      final imageData = await db.query(
+          'staff_signup',
+          columns: ['profileImage', 'imagesData'],
+          where: 'id = ?',
+          whereArgs: [staff['id']],
+          limit: 1
+      );
+
+      allStaff.add({
+        ...staff,
+        'profileImage': imageData.isNotEmpty ? imageData.first['profileImage'] : null,
+        'imagesData': imageData.isNotEmpty ? imageData.first['imagesData'] : null,
+      });
+    }
+
+    return allStaff;
+  }
+
+
+  static Future<int> updateStaff(int id, Map<String, dynamic> newData) async {
+    final db = await DBHelper.db;
+
+    final profileImageJson = jsonEncode(newData['profileImage']);
+    final imagesDataJson = jsonEncode(newData['imagesData']);
+    return await db.update(
+      'staff_signup',
+      {
+        'name': newData['name'],
+        'nid': newData['nid'],
+        'phone': newData['phone'],
+        'position': newData['position'],
+        'present_address': newData['present_address'],
+        'permanent_address': newData['permanent_address'],
+        'salary': newData['salary'],
+        'staff_id': newData['staff_id'],
+        'join_date': newData['join_date'],
+        'email': newData['email'],
+        'guardian_info': newData['guardian_info'],
+        'info': newData['info'],
+        'profileImage': profileImageJson,
+        'imagesData': imagesDataJson,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> deleteStaff(int id) async {
+    final db = await DBHelper.db;
+    await db.delete('staff_signup', where: 'id = ?', whereArgs: [id]);
+  }
 
 
 }

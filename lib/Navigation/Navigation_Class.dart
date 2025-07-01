@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Food%20List/CategoryManagerScreen.dart';
 import 'package:restaurant_inventory/Staff/StaffScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
+import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
 import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
 import 'package:restaurant_inventory/sell/SellScreen.dart';
 
@@ -20,20 +21,22 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
-    StaffScreen(),
+    CombinedSellManagementScreen(),
     CostingRecordScreen(),
-    SellScreen(),
-    SellRecordScreen(),
-    DashboardScreen(),
+    StaffScreen(),
     CombinedManagementScreen(),
     MenuItemManagerScreen(),
     CategoryManagerScreen(),
+    SellScreen(),
+    SellRecordScreen(),
+    StaffScreen(),
+    DashboardScreen(),
   ];
   final List<String> _pageTitles = [
-    'Dashboard',
-    'Food Management List',
-    "Add Food Menu Item",
-    'Add Costing',
+    'Sell Management',
+    'Costing Management',
+    "Staff Management",
+    'Food List Management',
     'Add Employee',
     'Staff Payment',
     "Show All Costing",
@@ -140,18 +143,18 @@ class _Navigation_ClassState extends State<Navigation_Class> {
             _buildDrawerHeader(context),
             ListTile(
               leading: Icon(Icons.home),
-              title: Text('Dashboard'),
+              title: Text('Sell Management'),
               onTap: () => _onSelectItem(0),
             ),
 
             ListTile(
               leading: Icon(Icons.category),
-              title: Text('Add New Item'),
+              title: Text('Costing Management'),
               onTap: () => _onSelectItem(1),
             ),
             ListTile(
               leading: Icon(Icons.restaurant_menu),
-              title: Text('Add Food Menu Item',),
+              title: Text('Staff Management',),
               onTap: () => _onSelectItem(2),
             ),
             ListTile(

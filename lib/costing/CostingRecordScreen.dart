@@ -47,7 +47,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
             children: [
               DropdownButtonFormField<String>(
                 value: selectedType,
-                items: ["Ingredients","Rent","Staff Salary", "Bill", "Maintenance", "Others"]
+                items: ["Ingredients","Meal Bill","Rent","Staff Salary", "Bill", "Maintenance", "Others"]
                     .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                     .toList(),
                 onChanged: (val) {
@@ -242,7 +242,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                     children: [
                       DropdownButtonFormField<String>(
                         value: selectedType,
-                        items: ["Ingredients","Rent","Staff Salary", "Bill", "Maintenance", "Others"]
+                        items: ["Ingredients","Meal Bill","Rent","Staff Salary", "Bill", "Maintenance", "Others"]
                             .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                             .toList(),
                         onChanged: (val) {
