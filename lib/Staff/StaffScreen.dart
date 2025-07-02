@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 import '../localDB/DBHelper.dart';
 import '../showToast/Toast_Message.dart';
 
@@ -94,11 +96,6 @@ class _StaffScreenState extends State<StaffScreen> {
                 return;
               }
 
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) => const Center(child: CircularProgressIndicator()),
-              );
               try {
                 // Prepare staff data
                 final List<Map<String, String>> formattedProfileImages = [];
@@ -118,6 +115,7 @@ class _StaffScreenState extends State<StaffScreen> {
                   });
                 }
 
+                final String url = 'https://script.google.com/macros/s/AKfycbwmJ_8fmDccVHONgyrIAwty_CBNXwszTTxgOQnybiJCdqaE6T0VejvT9lIhwFZmX_M/exec?action=StaffAdd';  // Replace with your Google Apps Script URL
 
                 Map<String, dynamic> staffData = {
                   'name': staffNameController.text,
@@ -140,23 +138,74 @@ class _StaffScreenState extends State<StaffScreen> {
                 print('Staff Data: $staffData');
                 // TODO: Implement your actual data saving logic
                 // await DBHelper.insertStaff(staffData);
-                final success = await DBHelper.insertStaff(staffData);
-                if (success) {
-                  loadStaff();
-                  Navigator.pop(context); // Close loading
-                  Navigator.pop(context); // Close dialog
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Staff added successfully')),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Failed to add staff')),
-                  );
+
+                try {
+                  final response = await http.post(
+                    Uri.parse(url),
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: json.encode(staffData),
+                  ).timeout(Duration(seconds: 30));
+
+                  // Handle redirect manually if needed
+                  if (response.statusCode == 302) {
+                    final redirectUrl = response.headers['location'];
+                    if (redirectUrl != null) {
+                      final redirectedResponse = await http.post(
+                        Uri.parse(redirectUrl),
+                        headers: {'Content-Type': 'application/json'},
+                        body: json.encode(staffData),
+                      );
+                      print("Redirected statusCode: ${redirectedResponse.statusCode}");
+                      print("Redirected body: ${redirectedResponse.body}");
+                      // Process the redirected response here
+                      return;
+                    }
+                  }
+
+                  print("statusCode: ${response.statusCode}");
+                  print("body: ${response.body}");
+
+                  if (response.statusCode == 200) {
+                    final responseData = json.decode(response.body);
+                    if (responseData['status'] == 'success') {
+                      print('Data submitted successfully');
+                        Navigator.pop(context); // Close loading
+                        Navigator.pop(context); // Close dialog
+                    } else {
+                      print('Server error: ${responseData['message']}');
+                    }
+                  } else {
+                    print('Failed with status: ${response.statusCode}');
+                    print('Response body: ${response.body}');
+                    Navigator.pop(context); // Close loading
+                  }
+                }on TimeoutException catch (e) {
+                  print('Request timed out: $e');
                   Navigator.pop(context); // Close loading
                 }
+                catch (error) {
+                  print('Error: $error');
+                  Navigator.pop(context); // Close loading
+                }
+
+                // final success = await DBHelper.insertStaff(staffData);
+                // if (success) {
+                //   loadStaff();
+                //   Navigator.pop(context); // Close loading
+                //   Navigator.pop(context); // Close dialog
+                //   ScaffoldMessenger.of(context).showSnackBar(
+                //     const SnackBar(content: Text('Staff added successfully')),
+                //   );
+                // } else {
+                //   ScaffoldMessenger.of(context).showSnackBar(
+                //     const SnackBar(content: Text('Failed to add staff')),
+                //   );
+                //   Navigator.pop(context); // Close loading
+                // }
                 // loadStaff(); // Refresh staff list if needed
               } catch (e) {
-                Navigator.pop(context); // Close loading
                 ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error: ${e.toString()}')));
               }

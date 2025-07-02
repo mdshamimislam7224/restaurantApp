@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../localDB/DBHelper.dart';
 
 class SellRecordScreen extends StatefulWidget {
-  const SellRecordScreen({super.key});
+  final VoidCallback? onRefresh;
+
+  const SellRecordScreen({super.key, this.onRefresh});
+
 
   @override
   State<SellRecordScreen> createState() => _SellRecordScreenState();
@@ -13,6 +16,7 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   List<Map<String, dynamic>> sales = [];
   List<Map<String, dynamic>> saleItems = [];
   List<Map<String, dynamic>> filteredSales = [];
+  final GlobalKey<_SellRecordScreenState> _sellRecordScreenKey = GlobalKey();
   List<String> categoryNames = [];
   String? selectedCategory;
   List<Map<String, dynamic>> menuItems = [];
@@ -355,7 +359,22 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
         .fold(0, (sum, sale) => sum + (sale['total'] as double));
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Sell Records")),
+      appBar: AppBar(title: const Text("Sell Records"),actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: () async {
+            // Show loading indicator
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Refreshing data..."),
+                duration: Duration(seconds: 1),
+              ),
+            );
+            await loadSales(); // Reload data
+          },
+        ),
+      ],),
+
       body: LayoutBuilder(
         builder: (context, constraints) {
           bool isWideScreen = constraints.maxWidth > 600;

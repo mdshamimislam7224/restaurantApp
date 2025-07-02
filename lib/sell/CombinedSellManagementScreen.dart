@@ -62,7 +62,6 @@ class _CombinedManagementScreenState extends State<CombinedSellManagementScreen>
               ],
             ),
           ),
-
           // Screen Content
           SliverFillRemaining(
             hasScrollBody: true,

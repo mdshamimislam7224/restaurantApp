@@ -105,7 +105,6 @@ class _SellScreenState extends State<SellScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Sell Entry")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(

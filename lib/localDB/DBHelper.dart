@@ -338,26 +338,9 @@ class DBHelper {
           'permanent_address', 'salary', 'staff_id', 'join_date', 'email',
           'guardian_info', 'info']
     );
-
-    // Then get images for each staff member one by one
-    for (var staff in basicInfoList) {
-      final imageData = await db.query(
-          'staff_signup',
-          columns: ['profileImage', 'imagesData'],
-          where: 'id = ?',
-          whereArgs: [staff['id']],
-          limit: 1
-      );
-
-      allStaff.add({
-        ...staff,
-        'profileImage': imageData.isNotEmpty ? imageData.first['profileImage'] : null,
-        'imagesData': imageData.isNotEmpty ? imageData.first['imagesData'] : null,
-      });
+    return basicInfoList;
     }
 
-    return allStaff;
-  }
 
 
   static Future<int> updateStaff(int id, Map<String, dynamic> newData) async {
