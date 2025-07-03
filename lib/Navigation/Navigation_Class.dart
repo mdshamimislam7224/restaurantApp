@@ -28,7 +28,6 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     StaffScreen(),
     CombinedManagementScreen(),
     MenuItemManagerScreen(),
-    CategoryManagerScreen(),
     SellScreen(),
     SellRecordScreen(),
     DashboardScreen(),
