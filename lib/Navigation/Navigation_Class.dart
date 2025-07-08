@@ -1,9 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Food%20List/CategoryManagerScreen.dart';
+import 'package:restaurant_inventory/Staff/StaffScreen.dart';
+import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
+import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
+import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
+import 'package:restaurant_inventory/sell/SellScreen.dart';
 
+import '../DashboardScreen.dart';
 import '../Food List/CombinedManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
+import '../Staff/StaffListScreen.dart';
 
 
 class Navigation_Class extends StatefulWidget {
@@ -15,20 +22,26 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
-    MenuItemManagerScreen(),
+    StaffListScreen(),
+    CombinedSellManagementScreen(),
+    CostingRecordScreen(),
+    StaffScreen(),
     CombinedManagementScreen(),
-    CategoryManagerScreen(),
+    MenuItemManagerScreen(),
+    SellScreen(),
+    SellRecordScreen(),
+    DashboardScreen(),
   ];
   final List<String> _pageTitles = [
-    'Dashboard',
-    'Food Management List',
-    "Add Food Menu Item",
-    'Add Costing',
+    'Sell Management',
+    'Costing Management',
+    "Staff Management",
+    'Food List Management',
     'Add Employee',
     'Staff Payment',
     "Show All Costing",
     "Cash Calculate",
-    'Calculate Owner Account'
+    'Load Data From Online Database',
 
   ];
 
@@ -45,6 +58,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     setState(() {
       _selectedDrawerIndex = index;
     });
+
     Navigator.pop(context);
   }
 
@@ -59,6 +73,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
               icon: Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () {
                 Navigator.pop(context);
+                //Navigator.push(context, MaterialPageRoute(builder: (context) => DashBoard_DetailsBoticeBoard(notices: notices),),);
               },
             ),
           ),
@@ -128,39 +143,39 @@ class _Navigation_ClassState extends State<Navigation_Class> {
             _buildDrawerHeader(context),
             ListTile(
               leading: Icon(Icons.home),
-              title: Text('Dashboard'),
+              title: Text('Sell Management'),
               onTap: () => _onSelectItem(0),
             ),
 
             ListTile(
               leading: Icon(Icons.category),
-              title: Text('Add New Item'),
+              title: Text('Costing Management'),
               onTap: () => _onSelectItem(1),
             ),
             ListTile(
-              leading: Icon(Icons.restaurant_menu),
-              title: Text('Add Food Menu Item',),
+              leading: Icon(Icons.person),
+              title: Text('Staff Management',),
               onTap: () => _onSelectItem(2),
             ),
             ListTile(
-              leading: Icon(Icons.money),
-              title: Text('Add Costing Record'),
+              leading: Icon(Icons.restaurant_menu),
+              title: Text('Food List Management'),
               onTap: () => _onSelectItem(3),
             ),
             ListTile(
               leading: Icon(Icons.calculate_outlined),
               title: Text('View All Costing'),
-              onTap: () => _onSelectItem(6),
+              onTap: () => _onSelectItem(4),
             ),
             ListTile(
               leading: Icon(Icons.person_add),
               title: Text('Add Employee'),
-              onTap: () => _onSelectItem(4),
+              onTap: () => _onSelectItem(5),
             ),
             ListTile(
               leading: Icon(Icons.payments),
               title: Text('Staff Payment'),
-              onTap: () => _onSelectItem(5),
+              onTap: () => _onSelectItem(6),
             ),
 
             ListTile(
@@ -170,7 +185,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
             ),
             ListTile(
               leading: Icon(Icons.calculate_outlined),
-              title: Text('Calculate Onwer Cash'),
+              title: Text('Load Menu Items'),
               onTap: () => _onSelectItem(8),
             ),
           ],

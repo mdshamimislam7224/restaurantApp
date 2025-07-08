@@ -13,7 +13,7 @@ class MenuItemManagerScreen extends StatefulWidget {
 }
 
 class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
-  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwhv8zAst7bodvCiHJHK2amhDYgZvVWbdYYYC4yoOVr7TcHCwXHrRy6L0CBWS-CsMfrZw/exec";
+  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwF-ApiZXB8j9N_mnTPKHITcXqseEbptEoF4Kob_ejquN2Uesu1_O7HkL4xUMVI5T5NZQ/exec";
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -40,13 +40,6 @@ class _MenuItemManagerScreenState extends State<MenuItemManagerScreen> {
     await Future.wait([fetchCategories(), fetchMenuItems()]);
     setState(() => _loading = false);
   }
-  Future<void> _loadMoreItems() async {
-    if (!_hasMoreItems || _loading) return;
-
-    setState(() => _currentPage++);
-    await fetchMenuItems(loadMore: true);
-  }
-
   Future<void> fetchCategories() async {
     try {
       final response = await http.get(Uri.parse("$scriptUrl?action=getCategories"));

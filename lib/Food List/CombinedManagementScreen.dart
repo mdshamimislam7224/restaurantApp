@@ -11,13 +11,10 @@ class CombinedManagementScreen extends StatefulWidget {
 
 class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
   int _selectedIndex = 0;
-  final TextEditingController _searchController = TextEditingController();
-
   final List<Widget> _screens = [
     const CategoryManagerScreen(),
     const MenuItemManagerScreen(),
   ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -29,7 +26,7 @@ class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
               children: [
                 // Segmented Button - Full Width
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical:8),
                   child: SizedBox(
                     width: double.infinity,
                     child: SegmentedButton<int>(
@@ -57,27 +54,26 @@ class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
                     ),
                   ),
                 ),
-
-                // Search Bar
                 // Padding(
-                //   padding: const EdgeInsets.symmetric(horizontal: 16),
-                //   child: TextField(
-                //     controller: _searchController,
-                //     decoration: InputDecoration(
-                //       hintText: 'Search...',
-                //       prefixIcon: const Icon(Icons.search),
-                //       border: OutlineInputBorder(
-                //         borderRadius: BorderRadius.circular(10),
+                //   padding:
+                //       const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                //   child: Row(
+                //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                //     children: [
+                //       Text('Data Reload',
+                //           style: Theme.of(context).textTheme.headlineSmall),
+                //       IconButton(
+                //         icon: const Icon(Icons.refresh),
+                //         onPressed: () {
+                //
+                //
+                //         },
                 //       ),
-                //       filled: true,
-                //       contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                //     ),
-                //     onChanged: (value) {
-                //       setState(() {});
-                //     },
+                //     ],
                 //   ),
                 // ),
-                const SizedBox(height: 16),
+
+                const SizedBox(height: 10),
               ],
             ),
           ),
@@ -95,9 +91,4 @@ class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
 }

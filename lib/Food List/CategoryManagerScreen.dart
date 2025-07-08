@@ -12,7 +12,7 @@ class CategoryManagerScreen extends StatefulWidget {
 
 class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
   final TextEditingController _nameController = TextEditingController();
-  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwhv8zAst7bodvCiHJHK2amhDYgZvVWbdYYYC4yoOVr7TcHCwXHrRy6L0CBWS-CsMfrZw/exec";
+  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwF-ApiZXB8j9N_mnTPKHITcXqseEbptEoF4Kob_ejquN2Uesu1_O7HkL4xUMVI5T5NZQ/exec";
 
   List<Category> categories = [];
   Category? selectedCategory;

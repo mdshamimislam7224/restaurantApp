@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
-import 'CategoryManagerScreen.dart';
-import 'menu_item_manager_screen.dart';
+import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
 
-class CombinedManagementScreen extends StatefulWidget {
-  const CombinedManagementScreen({super.key});
+import 'SellScreen.dart';
+class CombinedSellManagementScreen extends StatefulWidget {
+  const CombinedSellManagementScreen({super.key});
 
   @override
-  State<CombinedManagementScreen> createState() => _CombinedManagementScreenState();
+  State<CombinedSellManagementScreen> createState() => _CombinedManagementScreenState();
 }
 
-class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
+class _CombinedManagementScreenState extends State<CombinedSellManagementScreen> {
   int _selectedIndex = 0;
   final TextEditingController _searchController = TextEditingController();
 
   final List<Widget> _screens = [
-    const CategoryManagerScreen(),
-    const MenuItemManagerScreen(),
+    const SellScreen(),
+    const SellRecordScreen()
   ];
 
   @override
@@ -39,12 +39,12 @@ class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
                       segments: const [
                         ButtonSegment(
                           value: 0,
-                          label: Text('Categories'),
+                          label: Text('Order'),
                           icon: Icon(Icons.category),
                         ),
                         ButtonSegment(
                           value: 1,
-                          label: Text('Menu Items'),
+                          label: Text('View Order'),
                           icon: Icon(Icons.restaurant),
                         ),
                       ],
@@ -58,30 +58,10 @@ class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
                   ),
                 ),
 
-                // Search Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      filled: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    ),
-                    onChanged: (value) {
-                      setState(() {});
-                    },
-                  ),
-                ),
                 const SizedBox(height: 16),
               ],
             ),
           ),
-
           // Screen Content
           SliverFillRemaining(
             hasScrollBody: true,
