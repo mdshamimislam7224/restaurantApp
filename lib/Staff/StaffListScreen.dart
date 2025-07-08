@@ -212,7 +212,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
                       'Content-Type': 'application/json',
                     },
                     body: json.encode(staffData),
-                  ).timeout(Duration(seconds: 30));
+                  ).timeout(Duration(seconds: 300));
 
                   // Handle redirect manually if needed
                   if (response.statusCode == 302) {
@@ -229,7 +229,6 @@ class _StaffListScreenState extends State<StaffListScreen> {
                       return;
                     }
                   }
-
                   print("statusCode: ${response.statusCode}");
                   print("body: ${response.body}");
 
@@ -237,23 +236,22 @@ class _StaffListScreenState extends State<StaffListScreen> {
                     final responseData = json.decode(response.body);
                     if (responseData['status'] == 'success') {
                       print('Data submitted successfully');
-                      Navigator.pop(context); // Close loading
-                      Navigator.pop(context); // Close dialog
+                     // Navigator.pop(context); // Close loading
                     } else {
                       print('Server error: ${responseData['message']}');
                     }
                   } else {
                     print('Failed with status: ${response.statusCode}');
                     print('Response body: ${response.body}');
-                    Navigator.pop(context); // Close loading
+                    //Navigator.pop(context); // Close loading
                   }
                 }on TimeoutException catch (e) {
                   print('Request timed out: $e');
-                  Navigator.pop(context); // Close loading
+                  //Navigator.pop(context); // Close loading
                 }
                 catch (error) {
                   print('Error: $error');
-                  Navigator.pop(context); // Close loading
+                 // Navigator.pop(context); // Close loading
                 }
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -840,7 +838,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
                         joiningDate: _selectedDate,
                       );
 
-                      await _updateStaff(updatedStaff,staff.id);
+                      await _updateStaff(updatedStaff, staff.id, _profileImages, _documentImages,);
                       Navigator.pop(context); // close loading
                       Navigator.pop(context); // close dialog
                     } catch (e) {
@@ -1139,30 +1137,63 @@ class _StaffListScreenState extends State<StaffListScreen> {
       },
     );
   }
-  Future<void> _updateStaff(Staff updatedStaff, String originalStaffId) async {
+  Future<void> _updateStaff(
+      Staff updatedStaff,
+      String originalStaffId,
+      List<XFile> profileImages,
+      List<XFile> documentImages,
+      ) async {
     try {
-      final url = Uri.parse('${apiClass.baseUrlStaff}?action=updateStaff');
+      // Convert images to base64
+      final List<Map<String, String>> profileImageData = [];
+      if (profileImages.isNotEmpty) {
+        for (XFile image in profileImages) {
+          profileImageData.add({
+            'data': await _convertToBase64(image),
+            'mimeType': 'image/jpeg',
+          });
+        }
+      }
+
+      final List<Map<String, String>> documentImageData = [];
+      if (documentImages.isNotEmpty) {
+        for (XFile image in documentImages) {
+          documentImageData.add({
+            'data': await _convertToBase64(image),
+            'mimeType': 'image/jpeg',
+          });
+        }
+      }
 
       final payload = {
-        ...updatedStaff.toJson(),
-        'originalStaffId': originalStaffId,
-        'action': 'updateStaff'
+        "staff_id": updatedStaff.id,
+        "name": updatedStaff.name,
+        "position": updatedStaff.position,
+        "phone": updatedStaff.phone,
+        "salary": updatedStaff.salary,
+        "nid": updatedStaff.nid,
+        "present_address": updatedStaff.presentAddress,
+        "permanent_address": updatedStaff.permanentAddress,
+        "info": updatedStaff.info,
+        "guardian_info": updatedStaff.guardianInfo,
+        "email": updatedStaff.email,
+        "join_date": updatedStaff.joiningDate?.toIso8601String(),
+        "profileImage": profileImageData, // Use converted data
+        "imagesData": documentImageData,  // Use converted data
+        "originalStaffId": originalStaffId,
       };
 
       debugPrint('Sending payload: ${json.encode(payload)}');
 
       final response = await http.post(
-        url,
+        Uri.parse('${apiClass.baseUrlStaff}?action=updateStaff'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(payload),
-      ).timeout(Duration(seconds: 30));
-
-      debugPrint('Response: ${response.statusCode} - ${response.body}');
+      ).timeout(Duration(seconds: 300));
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'success') {
-          // Update UI
           setState(() {
             staffList.removeWhere((s) => s.id == originalStaffId);
             staffList.add(updatedStaff);
@@ -1171,28 +1202,34 @@ class _StaffListScreenState extends State<StaffListScreen> {
             SnackBar(content: Text('Update successful!')),
           );
         } else {
-          print('Update failed: ${responseData['message']}');
           throw Exception(responseData['message'] ?? 'Update failed');
         }
       } else {
         throw Exception('HTTP ${response.statusCode}');
       }
-    } on FormatException {
-      print('Invalid data format');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Server returned invalid data format')),
-      );
     } catch (e) {
-      print('Error: $e');
+      print('Error in _updateStaff: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Update failed: ${e.toString()}')),
       );
     }
   }
-  Future<String> _convertToBase64(XFile image) async {
-    final bytes = await image.readAsBytes();
+  Future<List<Map<String, String>>> _convertImages(List<XFile> images) async {
+    final List<Map<String, String>> result = [];
+    for (XFile image in images) {
+      result.add({
+        'data': await _convertToBase64(image),
+        'mimeType': 'image/jpeg',
+      });
+    }
+    return result;
+  }
+  Future<String> _convertToBase64(XFile file) async {
+    final bytes = await file.readAsBytes();
     return base64Encode(bytes);
   }
+
+
 
 }
 

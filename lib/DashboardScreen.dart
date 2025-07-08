@@ -30,7 +30,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await loadMenuItemsFromLocal();
     setState(() => isLoading = false);
   }
-
   Future<void> fetchAndSaveMenuItems() async {
     final res = await http.get(Uri.parse('$scriptUrl?action=getMenuAllItems'));
     print('Status Code: ${res.statusCode}');
@@ -38,7 +37,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final json = jsonDecode(res.body);
       final List items = json['data']['items']; // ✅ Get the nested list
       print('Items: $items');
-
       await DBHelper.clearMenuItems();
       await DBHelper.insertMenuItems(List<Map<String, dynamic>>.from(items));
       print('✅ Items inserted into SQLite');
