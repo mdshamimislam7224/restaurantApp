@@ -7,7 +7,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:restaurant_inventory/api/apiClass.dart';
+import 'package:restaurant_inventory/showToast/Toast_Message.dart';
 
+import '../alertDialog/customDialog.dart';
 import 'Staff.dart';
 import 'StaffProfileView.dart';
 
@@ -21,27 +23,34 @@ class _StaffListScreenState extends State<StaffListScreen> {
   bool isLoading = true;
   final ImagePicker _picker = ImagePicker();
   bool isRefreshing = false;
-
+  Toast_Message toast = Toast_Message();
+  late customDialog dialog;
   @override
   void initState() {
     super.initState();
+     dialog = customDialog(context);
     _loadStaffData();
   }
   Future<void> _loadStaffData() async {
     try {
+      dialog.showLoading("Loading...", subtitle: "Please wait");
       setState(() => isLoading = true);
+
       final response = await http.get(
         Uri.parse('${apiClass.baseUrlStaff}?action=getStaff'),
-      ).timeout(Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+
         if (data is List) {
           setState(() {
             staffList = data.map((item) => Staff.fromJson(item)).toList();
             isLoading = false;
             isRefreshing = false;
           });
+          dialog.dismiss();
+          toast.showToast("Staff data loaded successfully", Colors.green, Colors.white);
         } else {
           throw Exception('Invalid data format');
         }
@@ -53,53 +62,43 @@ class _StaffListScreenState extends State<StaffListScreen> {
         isLoading = false;
         isRefreshing = false;
       });
-      _showErrorSnackbar('Error: ${error.toString()}');
+      dialog.dismiss();
+      // Show error dialog after dismissing loading dialog
+      customDialog(context).showError("Error", error.toString().replaceFirst("Exception: ", ""),);
     }
   }
-
   Future<void> _deleteStaff(String staffId) async {
     try {
+      dialog.showLoading("Deleting...");
       final response = await http.post(
         Uri.parse('${apiClass.baseUrlStaff}?action=deleteStaff'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'staffId': staffId}),
-      ).timeout(Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
+        body: json.encode({'staffId': staffId.trim()}),
+      ).timeout(const Duration(seconds: 30));
+      print(' deleteStaff ID: ${staffId}');
+      if (response.statusCode == 200 || response.statusCode == 302) {
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'success') {
           setState(() {
             staffList.removeWhere((staff) => staff.id == staffId);
+            _loadStaffData();
           });
-          _showSuccessSnackbar('Staff deleted successfully');
+          dialog.dismiss();
+          toast.showToast("Staff ${staffId} deleted successfully", Colors.green, Colors.white);
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to delete staff');
+          throw Exception(responseData['message'] ?? 'Delete failed');
         }
       } else {
         throw Exception('Server error: ${response.statusCode}');
       }
     } catch (error) {
-      _showErrorSnackbar('Delete failed: ${error.toString()}');
+      dialog.dismiss();
+      customDialog(context).showError("Delete Failed", error.toString().replaceFirst("Exception: ", ""));
     }
   }
 
-  void _showErrorSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
 
-  void _showSuccessSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
+
 
   void showAddStaffDialog(BuildContext context) {
     // Controllers for all fields
@@ -206,6 +205,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
                 // await DBHelper.insertStaff(staffData);
 
                 try {
+                  dialog.showLoading("Staff Adding...", subtitle: "Please wait");
                   final response = await http.post(
                     Uri.parse('${apiClass.baseUrlStaff}?action=StaffAdd'),
                     headers: {
@@ -215,47 +215,58 @@ class _StaffListScreenState extends State<StaffListScreen> {
                   ).timeout(Duration(seconds: 300));
 
                   // Handle redirect manually if needed
-                  if (response.statusCode == 302) {
-                    final redirectUrl = response.headers['location'];
-                    if (redirectUrl != null) {
-                      final redirectedResponse = await http.post(
-                        Uri.parse(redirectUrl),
-                        headers: {'Content-Type': 'application/json'},
-                        body: json.encode(staffData),
-                      );
-                      print("Redirected statusCode: ${redirectedResponse.statusCode}");
-                      print("Redirected body: ${redirectedResponse.body}");
-                      // Process the redirected response here
-                      return;
-                    }
-                  }
-                  print("statusCode: ${response.statusCode}");
-                  print("body: ${response.body}");
+                  // if (response.statusCode == 302) {
+                  //   final redirectUrl = response.headers['location'];
+                  //   if (redirectUrl != null) {
+                  //     final redirectedResponse = await http.post(
+                  //       Uri.parse(redirectUrl),
+                  //       headers: {'Content-Type': 'application/json'},
+                  //       body: json.encode(staffData),
+                  //     );
+                  //     print("Redirected statusCode: ${redirectedResponse.statusCode}");
+                  //     print("Redirected body: ${redirectedResponse.body}");
+                  //     dialog.dismiss();
+                  //     _loadStaffData();
+                  //     // Process the redirected response here
+                  //     return;
+                  //   }
+                  // }
+                  // print("statusCode: ${response.statusCode}");
+                  // print("body: ${response.body}");
 
-                  if (response.statusCode == 200) {
+                  if (response.statusCode == 200 || response.statusCode == 302 || response.statusCode == 405) {
                     final responseData = json.decode(response.body);
                     if (responseData['status'] == 'success') {
                       print('Data submitted successfully');
-                     // Navigator.pop(context); // Close loading
+                      dialog.dismiss();
+                      //Navigator.pushNamed(context, '/staffListScreen');
+                     toast.showToast("Staff Added Successfully", Colors.green, Colors.white);
+                     _loadStaffData();
                     } else {
-                      print('Server error: ${responseData['message']}');
+
                     }
+                    print('Added Stafff: ${response.body}');
+                    // toast.showToast("Staff Added Successfully", Colors.green, Colors.white);
+                    // _loadStaffData();
                   } else {
                     print('Failed with status: ${response.statusCode}');
+                    dialog.showError("Error", "Failed with status: ${response.statusCode}");
                     print('Response body: ${response.body}');
                     //Navigator.pop(context); // Close loading
                   }
                 }on TimeoutException catch (e) {
                   print('Request timed out: $e');
+                  dialog.showError("Error", 'Time Out');
                   //Navigator.pop(context); // Close loading
                 }
                 catch (error) {
                   print('Error: $error');
+                  dialog.showError("Error", error.toString());
                  // Navigator.pop(context); // Close loading
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: ${e.toString()}')));
+                print("Error: $e");
+                dialog.showError("Error", e.toString());
               }
             }
 
