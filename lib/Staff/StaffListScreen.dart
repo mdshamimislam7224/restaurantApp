@@ -24,25 +24,27 @@ class _StaffListScreenState extends State<StaffListScreen> {
   final ImagePicker _picker = ImagePicker();
   bool isRefreshing = false;
   Toast_Message toast = Toast_Message();
-  late customDialog dialog;
   @override
   void initState() {
     super.initState();
-     dialog = customDialog(context);
     _loadStaffData();
   }
   Future<void> _loadStaffData() async {
-    try {
-      dialog.showLoading("Loading...", subtitle: "Please wait");
-      setState(() => isLoading = true);
+    if (!mounted) return;
 
+    final dialog = customDialog(context);
+    dialog.showLoading("Loading...", subtitle: "Please wait");
+    setState(() => isLoading = true);
+
+    try {
       final response = await http.get(
         Uri.parse('${apiClass.baseUrlStaff}?action=getStaff'),
       ).timeout(const Duration(seconds: 30));
 
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-
         if (data is List) {
           setState(() {
             staffList = data.map((item) => Staff.fromJson(item)).toList();
@@ -51,49 +53,99 @@ class _StaffListScreenState extends State<StaffListScreen> {
           });
           dialog.dismiss();
           toast.showToast("Staff data loaded successfully", Colors.green, Colors.white);
-        } else {
-          throw Exception('Invalid data format');
         }
-      } else {
-        throw Exception('Failed to load staff: ${response.statusCode}');
       }
     } catch (error) {
+      if (!mounted) return;
       setState(() {
         isLoading = false;
         isRefreshing = false;
       });
       dialog.dismiss();
-      // Show error dialog after dismissing loading dialog
-      customDialog(context).showError("Error", error.toString().replaceFirst("Exception: ", ""),);
+      customDialog(context).showError(
+        "Error Loading Staff",
+        error.toString().replaceFirst("Exception: ", ""),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+      dialog.dismiss();
     }
   }
+
   Future<void> _deleteStaff(String staffId) async {
+    // DO NOT instantiate customDialog here. Use the global dialogService.
+     final dialog = customDialog(Navigator.of(context, rootNavigator: true).context);
+       dialog.showLoading("Deleting Staff...", subtitle: "Please wait"); // Use the global service
+    print('Deleting Staff ID: $staffId');
+
+    final client = http.Client(); // Create a new HTTP client for this request
     try {
-      dialog.showLoading("Deleting...");
-      final response = await http.post(
+      http.Response response = await client.post(
         Uri.parse('${apiClass.baseUrlStaff}?action=deleteStaff'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'staffId': staffId.trim()}),
       ).timeout(const Duration(seconds: 30));
-      print(' deleteStaff ID: ${staffId}');
-      if (response.statusCode == 200 || response.statusCode == 302) {
-        final responseData = json.decode(response.body);
-        if (responseData['status'] == 'success') {
-          setState(() {
-            staffList.removeWhere((staff) => staff.id == staffId);
-            _loadStaffData();
-          });
-          dialog.dismiss();
-          toast.showToast("Staff ${staffId} deleted successfully", Colors.green, Colors.white);
-        } else {
-          throw Exception(responseData['message'] ?? 'Delete failed');
+
+      print("Initial deleteStaff Response Status: ${response.statusCode}");
+      print('Initial deleteStaff Response Body: ${response.body}');
+
+      // --- Handle 302 Redirect explicitly, just like in submitData ---
+      if (response.statusCode == HttpStatus.found ||
+          response.statusCode == HttpStatus.movedPermanently ||
+          response.statusCode == HttpStatus.seeOther ||
+          response.statusCode == HttpStatus.temporaryRedirect) {
+        final String? newLocation = response.headers['location'];
+        if (newLocation != null) {
+          print('Redirecting to: $newLocation');
+          // This is crucial: the redirect from Apps Script is usually a GET
+          // to the actual content after initial authorization.
+          response = await client.get(
+            Uri.parse(newLocation),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ).timeout(const Duration(seconds: 300));
+          print('Redirected Response Status Code: ${response.statusCode}');
+          print('Redirected Raw Response Body: ${response.body}');
         }
-      } else {
-        throw Exception('Server error: ${response.statusCode}');
       }
-    } catch (error) {
+      // --- END Redirect Handling ---
+
+      // Now, process the FINAL response (after any redirects)
+      if (response.statusCode == 200) {
+          final responseData = json.decode(response.body);
+          if (responseData['status'] == 'success') {
+            dialog.dismiss(); // Dismiss the loading dialog
+            setState(() {
+              staffList.removeWhere((staff) => staff.id == staffId);
+            });
+            toast.showToast("Staff $staffId deleted successfully", Colors.green, Colors.white);
+            // Reload data, which will show its own loading/dismiss dialogs
+            await _loadStaffData();
+          }
+          else {
+            dialog.dismiss();
+            dialog.showError("Delete Failed", responseData['message'] ?? 'Unknown error from server');
+          }
+      }
+      else {
+        // Handle non-200 status codes (e.g., 404, 500, or a final 302 that wasn't handled)
+        dialog.dismiss();
+       dialog.showError("Delete Failed", "Server returned status: ${response.statusCode}\nBody: ${response.body}");
+      }
+    } on TimeoutException catch (e) {
+      print("deleteStaff Error (Timeout): $e");
       dialog.dismiss();
-      customDialog(context).showError("Delete Failed", error.toString().replaceFirst("Exception: ", ""));
+      dialog.showError("Network Timeout", "The delete request timed out. Please check your connection.");
+    } catch (error) {
+      print("deleteStaff Error: $error");
+      dialog.dismiss();
+      // Use the global customDialogInstance (which uses dialogService internally)
+      dialog.showError("Delete Failed", error.toString().replaceFirst("Exception: ", ""),);
+    } finally {
+      client.close(); // Always close the HTTP client
     }
   }
 
@@ -160,116 +212,125 @@ class _StaffListScreenState extends State<StaffListScreen> {
             // Submit form data
             Future<void> submitData() async {
               if (!validateForm()) {
+                // If form is not valid, stop execution immediately.
                 return;
               }
+              final dialog = customDialog(context);
 
+
+              // --- Start: Prepare Data ---
+              final List<Map<String, String>> formattedProfileImages = [];
+              final List<Map<String, String>> formattedImages = [];
+
+              for (XFile image in profileImageList) {
+                String base64Image = await _convertToBase64(image);
+                formattedProfileImages.add({
+                  'data': base64Image,
+                  'mimeType': 'image/jpeg',
+                });
+              }
+              for (XFile image in imagesFileList) {
+                String base64Image = await _convertToBase64(image);
+                formattedImages.add({
+                  'data': base64Image,
+                  'mimeType': 'image/jpeg',
+                });
+              }
+
+              Map<String, dynamic> staffData = {
+                'name': staffNameController.text,
+                'nid': staffNIDController.text,
+                'phone': staffPhoneController.text,
+                'position': staffPositionController.text,
+                'present_address': staffPresentAddressController.text,
+                'permanent_address':
+                sameAddress
+                    ? staffPresentAddressController.text
+                    : staffPermanentAddress.text,
+                'salary': staffSalaryController.text,
+                'staff_id': staffIdController.text,
+                'join_date': staffJoinDateController.text,
+                'email': staffEmailController.text,
+                'guardian_info': staffGuardianInfoController.text,
+                'info': staffInfoController.text,
+                'profileImage': formattedProfileImages,
+                'imagesData': formattedImages,
+              };
+              print('Staff Data: $staffData');
+              // --- End: Prepare Data ---
+              // --- Start: Network Request & Dialog Management ---
+              dialog.showLoading("Staff Adding...", subtitle: "Please wait"); // Show initial loading dialog
+
+              final client = http
+                  .Client(); // Create an HTTP client for the request
+              // ... inside submitData() function ...
               try {
-                // Prepare staff data
-                final List<Map<String, String>> formattedProfileImages = [];
-                final List<Map<String, String>> formattedImages = [];
+                http.Response response = await client.post(
+                  Uri.parse('${apiClass.baseUrlStaff}?action=StaffAdd'),
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: json.encode(staffData),
+                ).timeout(const Duration(seconds: 300));
 
-                for (XFile image in profileImageList) {
-                  String base64Image = await _convertToBase64(image);
-                  formattedProfileImages.add({
-                    'data': base64Image,
-                    'mimeType': 'image/jpeg', // Adjust based on your image type
-                  });
-                }
-                for (XFile image in imagesFileList) {
-                  String base64Image = await _convertToBase64(image);
-                  formattedImages.add({'data': base64Image,
-                    'mimeType': 'image/jpeg', // Adjust based on your image type
-                  });
-                }
+                // --- START OF MODIFIED SECTION ---
 
-                Map<String, dynamic> staffData = {
-                  'name': staffNameController.text,
-                  'nid': staffNIDController.text,
-                  'phone': staffPhoneController.text,
-                  'position': staffPositionController.text,
-                  'present_address': staffPresentAddressController.text,
-                  'permanent_address': sameAddress
-                      ? staffPresentAddressController.text
-                      : staffPermanentAddress.text,
-                  'salary': staffSalaryController.text,
-                  'staff_id': staffIdController.text,
-                  'join_date': staffJoinDateController.text,
-                  'email': staffEmailController.text,
-                  'guardian_info': staffGuardianInfoController.text,
-                  'info': staffInfoController.text,
-                  'profileImage':formattedProfileImages,
-                  'imagesData': formattedImages,
-                };
-                print('Staff Data: $staffData');
-                // TODO: Implement your actual data saving logic
-                // await DBHelper.insertStaff(staffData);
-
-                try {
-                  dialog.showLoading("Staff Adding...", subtitle: "Please wait");
-                  final response = await http.post(
-                    Uri.parse('${apiClass.baseUrlStaff}?action=StaffAdd'),
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: json.encode(staffData),
-                  ).timeout(Duration(seconds: 300));
-
-                  // Handle redirect manually if needed
-                  // if (response.statusCode == 302) {
-                  //   final redirectUrl = response.headers['location'];
-                  //   if (redirectUrl != null) {
-                  //     final redirectedResponse = await http.post(
-                  //       Uri.parse(redirectUrl),
-                  //       headers: {'Content-Type': 'application/json'},
-                  //       body: json.encode(staffData),
-                  //     );
-                  //     print("Redirected statusCode: ${redirectedResponse.statusCode}");
-                  //     print("Redirected body: ${redirectedResponse.body}");
-                  //     dialog.dismiss();
-                  //     _loadStaffData();
-                  //     // Process the redirected response here
-                  //     return;
-                  //   }
-                  // }
-                  // print("statusCode: ${response.statusCode}");
-                  // print("body: ${response.body}");
-
-                  if (response.statusCode == 200 || response.statusCode == 302 || response.statusCode == 405) {
-                    final responseData = json.decode(response.body);
-                    if (responseData['status'] == 'success') {
-                      print('Data submitted successfully');
-                      dialog.dismiss();
-                      //Navigator.pushNamed(context, '/staffListScreen');
-                     toast.showToast("Staff Added Successfully", Colors.green, Colors.white);
-                     _loadStaffData();
-                    } else {
-
-                    }
-                    print('Added Stafff: ${response.body}');
-                    // toast.showToast("Staff Added Successfully", Colors.green, Colors.white);
-                    // _loadStaffData();
-                  } else {
-                    print('Failed with status: ${response.statusCode}');
-                    dialog.showError("Error", "Failed with status: ${response.statusCode}");
-                    print('Response body: ${response.body}');
-                    //Navigator.pop(context); // Close loading
+                // Manually follow redirect if needed
+                if (response.statusCode == HttpStatus.found ||
+                    response.statusCode == HttpStatus.movedPermanently ||
+                    response.statusCode == HttpStatus.seeOther ||
+                    response.statusCode == HttpStatus.temporaryRedirect) {
+                  final String? newLocation = response.headers['location'];
+                  if (newLocation != null) {
+                    print('Redirecting to: $newLocation');
+                    // This is crucial: the redirect from Apps Script is usually a GET
+                    // to the actual content after initial authorization.
+                    response = await client.get(
+                      Uri.parse(newLocation),
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                    ).timeout(const Duration(seconds: 300));
+                    print('Redirected Response Status Code: ${response.statusCode}');
+                    print('Redirected Raw Response Body: ${response.body}');
                   }
-                }on TimeoutException catch (e) {
-                  print('Request timed out: $e');
-                  dialog.showError("Error", 'Time Out');
-                  //Navigator.pop(context); // Close loading
                 }
-                catch (error) {
-                  print('Error: $error');
-                  dialog.showError("Error", error.toString());
-                 // Navigator.pop(context); // Close loading
+
+                print('Final Response Status Code: ${response.statusCode}');
+                print('Final Raw Response Body: ${response.body}');
+
+                // Process the final response (THIS IS THE UNIFIED BLOCK)
+                if (response.statusCode == 200) {
+                  final responseData = json.decode(response.body);
+                  if (responseData['status'] == 'success') {
+                    dialog.dismiss(); // Dismiss loading dialog
+                    toast.showToast("Staff Added Successfully", Colors.green, Colors.white);
+                    Navigator.of(context).pop(); // Close the form dialog
+                    await _loadStaffData(); // This will show its own loading dialog
+                  } else {
+                    dialog.dismiss();
+                    customDialog(context).showError("Error", responseData['message']);
+                  }
+                } else {
+                  dialog.dismiss();
+                  customDialog(context).showError("Error", "Failed with status: ${response.statusCode}");
                 }
+
+                // --- END OF MODIFIED SECTION ---
+
+              } on TimeoutException catch (e) {
+                dialog.dismiss(); // Dismiss loading on timeout
+                print('Request timed out: $e');
+                dialog.showError("Network Timeout",
+                    'The request took too long to complete. Please try again.');
               } catch (e) {
-                print("Error: $e");
-                dialog.showError("Error", e.toString());
+                dialog.dismiss(); // Dismiss loading on any other error
+                print('General Error: $e');
+                customDialog(Navigator.of(context, rootNavigator: true).context).showError("Error", e.toString());
+              } finally {
+                client.close(); // Always close the HTTP client to free up resources
               }
             }
-
             // Modified image picker methods with camera option
             Future<ImageSource?> showImageSourceDialog() async {
               return await showDialog<ImageSource>(
@@ -626,7 +687,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
             Text('No staff members found'),
             SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _loadStaffData,
+              onPressed: () => _loadStaffData,
               child: Text('Retry'),
             ),
           ],
