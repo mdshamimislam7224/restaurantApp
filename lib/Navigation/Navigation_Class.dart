@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Food%20List/CategoryManagerScreen.dart';
+import 'package:restaurant_inventory/Staff/SalaryRecordScreen.dart';
 import 'package:restaurant_inventory/Staff/StaffScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
@@ -22,10 +23,11 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
-    StaffListScreen(),
+    SalaryRecordScreen(),
     CombinedSellManagementScreen(),
     CostingRecordScreen(),
-    StaffScreen(),
+    StaffListScreen(),
+
     CombinedManagementScreen(),
     MenuItemManagerScreen(),
     SellScreen(),
@@ -35,8 +37,8 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   final List<String> _pageTitles = [
     'Sell Management',
     'Costing Management',
-    "Staff Management",
     'Food List Management',
+    "Staff Management",
     'Add Employee',
     'Staff Payment',
     "Show All Costing",

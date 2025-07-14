@@ -261,8 +261,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
               // --- Start: Network Request & Dialog Management ---
               dialog.showLoading("Staff Adding...", subtitle: "Please wait"); // Show initial loading dialog
 
-              final client = http
-                  .Client(); // Create an HTTP client for the request
+              final client = http.Client(); // Create an HTTP client for the request
               // ... inside submitData() function ...
               try {
                 http.Response response = await client.post(
@@ -309,7 +308,13 @@ class _StaffListScreenState extends State<StaffListScreen> {
                     await _loadStaffData(); // This will show its own loading dialog
                   } else {
                     dialog.dismiss();
-                    customDialog(context).showError("Error", responseData['message']);
+                    if (responseData['status'] == 'already exists') {
+                      customDialog(context).showError("Alert !", responseData['message']);
+
+                    }
+                    else{
+                      customDialog(context).showError("Error", responseData['message']);
+                    }
                   }
                 } else {
                   dialog.dismiss();
@@ -843,9 +848,6 @@ class _StaffListScreenState extends State<StaffListScreen> {
     List<XFile> _documentImages = [];
     bool _sameAddress = staff.presentAddress == staff.permanentAddress;
     final ImagePicker _picker = ImagePicker();
-
-
-
     // Initialize images if they exist
     if (staff.profileImage.isNotEmpty) {
       // You might need to handle existing images differently
@@ -983,6 +985,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
                         onPressed: pickProfileImage,
                         existingImageUrl: staff.profileImage,
                       ),
+                      SizedBox(height: 12),
                       _buildUpdateTextField(_nameController, 'Full Name', Icons.person),
                       SizedBox(height: 12),
                       _buildUpdateTextField(_positionController, 'Position', Icons.work),
@@ -1010,16 +1013,23 @@ class _StaffListScreenState extends State<StaffListScreen> {
                           Text('Same as Present Address'),
                         ],
                       ),
-                      if (!_sameAddress)
+                      if (!_sameAddress)...[
+                        SizedBox(height: 12),
                         _buildUpdateTextField(_permanentAddressController, 'Permanent Address', Icons.home, null, 2),
+                      ],
+                      SizedBox(height: 12),
                       _buildUpdateTextField(_infoController, 'Additional Info', Icons.info, null, 3),
+                      SizedBox(height: 12),
                       _buildUpdateTextField(_guardianInfoController, 'Guardian Info', Icons.family_restroom),
+                      SizedBox(height: 12),
                       _buildUpdateTextField(_emailController, 'Email', Icons.email, TextInputType.emailAddress),
+                      SizedBox(height: 12),
                       _buildImageSection(label: "Document Images", imageList: _documentImages,
                         onPressed: _pickDocumentImages,
                         isMulti: true,
                         existingImageUrl: staff.documents,
                       ),
+                      SizedBox(height: 12),
                       ListTile(
                         leading: Icon(Icons.calendar_today),
                         title: Text('Joining Date'),
@@ -1209,12 +1219,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
       },
     );
   }
-  Future<void> _updateStaff(
-      Staff updatedStaff,
-      String originalStaffId,
-      List<XFile> profileImages,
-      List<XFile> documentImages,
-      ) async {
+  Future<void> _updateStaff(Staff updatedStaff, String originalStaffId, List<XFile> profileImages, List<XFile> documentImages,) async {
     try {
       // Convert images to base64
       final List<Map<String, String>> profileImageData = [];
@@ -1256,19 +1261,42 @@ class _StaffListScreenState extends State<StaffListScreen> {
       };
 
       debugPrint('Sending payload: ${json.encode(payload)}');
-
-      final response = await http.post(
+      final client = http.Client();
+      http.Response response = await client.post(
         Uri.parse('${apiClass.baseUrlStaff}?action=updateStaff'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: json.encode(payload),
-      ).timeout(Duration(seconds: 300));
+      ).timeout(const Duration(seconds: 300));
 
-      if (response.statusCode == 200) {
+
+      if (response.statusCode == HttpStatus.found ||
+          response.statusCode == HttpStatus.movedPermanently ||
+          response.statusCode == HttpStatus.seeOther ||
+          response.statusCode == HttpStatus.temporaryRedirect) {
+        final String? newLocation = response.headers['location'];
+        if (newLocation != null) {
+          print('Redirecting to: $newLocation');
+          // This is crucial: the redirect from Apps Script is usually a GET
+          // to the actual content after initial authorization.
+          response = await client.get(
+            Uri.parse(newLocation),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ).timeout(const Duration(seconds: 300));
+          print('Redirected Response Status Code: ${response.statusCode}');
+          print('Redirected Raw Response Body: ${response.body}');
+        }
+      }
+
+      if (response.statusCode == 200 ||response.statusCode == 302) {
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'success') {
           setState(() {
             staffList.removeWhere((s) => s.id == originalStaffId);
-            staffList.add(updatedStaff);
+            _loadStaffData();
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Update successful!')),
@@ -1285,16 +1313,6 @@ class _StaffListScreenState extends State<StaffListScreen> {
         SnackBar(content: Text('Update failed: ${e.toString()}')),
       );
     }
-  }
-  Future<List<Map<String, String>>> _convertImages(List<XFile> images) async {
-    final List<Map<String, String>> result = [];
-    for (XFile image in images) {
-      result.add({
-        'data': await _convertToBase64(image),
-        'mimeType': 'image/jpeg',
-      });
-    }
-    return result;
   }
   Future<String> _convertToBase64(XFile file) async {
     final bytes = await file.readAsBytes();
