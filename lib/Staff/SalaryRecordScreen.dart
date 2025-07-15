@@ -88,6 +88,7 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
 
   Future<void> addSalary(Map<String, dynamic> salary) async {
     final dialog = customDialog(context);
+    dialog.showLoading("Adding Salary...", subtitle: "Please wait");
     final client = http.Client();
     try{
       http.Response response = await client.post(
@@ -125,29 +126,27 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'success') {
           dialog.dismiss(); // Dismiss loading dialog
+          Navigator.pop(context);
           toast.showToast("Staff Added Successfully", Colors.green, Colors.white);
-          Navigator.of(context).pop(); // Close the form dialog
           await fetchSalaryData(); // This will show its own loading dialog
         } else {
           print('Error: ${responseData['message']}');
           dialog.dismiss();
           if (responseData['status'] == 'already exists') {
             customDialog(context).showError("Alert !", responseData['message']);
-
           }
           else{
             customDialog(context).showError("Error", responseData['message']);
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Server error: ${response.statusCode}")),
-        );
+        dialog.dismiss();
+        customDialog(context).showError("Error", "Failed to add staff. Please try again.");
       }
     } on TimeoutException catch (e) {
       dialog.dismiss(); // Dismiss loading on timeout
       print('Request timed out: $e');
-      dialog.showError("Network Timeout",
+      customDialog(context).showError("Network Timeout",
           'The request took too long to complete. Please try again.');
       print("Request timed out: $e");
     }
@@ -156,105 +155,126 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
     }finally{
       client.close();
     }
-
-
   }
 
-  Future<void> updateSalary(Map<String, dynamic> salary) async {
+  Future<void> updateSalary(Map<String, dynamic> salaryData) async {
+    final dialog = customDialog(context);
+    dialog.showLoading("Updating Salary...", subtitle: "Please wait");
     final client = http.Client();
-    print(salary);
     try {
+      // Ensure consistent data format
+      final payload = {
+        'date': DateFormat('yyyy-MM-dd').format(DateTime.parse(salaryData['date'])),
+        'employeeId': salaryData['employeeId'].toString().trim(),
+        'employeeName': salaryData['employeeName'].toString(),
+        'basicSalary': salaryData['basicSalary'],
+        'advancePaid': salaryData['advancePaid'],
+        'paidNow': salaryData['paidNow'],
+        'totalPaid': salaryData['totalPaid'],
+        'remaining': salaryData['remaining'],
+        'note': salaryData['note'] ?? '',
+      };
+
+      print('Sending payload: $payload');
+
       var response = await client.post(
         Uri.parse('${apiClass.baseUrlStaff}?action=updateSalaryRecord'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode(salary),
-      ).timeout(const Duration(seconds: 50));
+        body: json.encode(payload),
+      ).timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == HttpStatus.found ||
-          response.statusCode == HttpStatus.movedPermanently ||
-          response.statusCode == HttpStatus.seeOther ||
-          response.statusCode == HttpStatus.temporaryRedirect) {
-        final String? newLocation = response.headers['location'];
-        if (newLocation != null) {
-          print('Redirecting to: $newLocation');
-          // This is crucial: the redirect from Apps Script is usually a GET
-          // to the actual content after initial authorization.
+      // Handle redirect if needed
+      if (response.statusCode == 302 || response.statusCode == 303) {
+        final redirectUrl = response.headers['location'];
+        if (redirectUrl != null) {
           response = await client.get(
-            Uri.parse(newLocation),
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          ).timeout(const Duration(seconds: 300));
-          print('Redirected Response Status Code: ${response.statusCode}');
-          print('Redirected Raw Response Body: ${response.body}');
+            Uri.parse(redirectUrl),
+            headers: {'Content-Type': 'application/json'},
+          );
         }
       }
 
-      // Check HTTP status code first (200 = success)
-      print('Response Status Code: ${response.statusCode}');
-      print('Raw Response Body: ${response.body}');
+      final responseData = json.decode(response.body);
+      print('Server response: $responseData');
+
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-
         if (responseData['status'] == 'success') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(responseData['message'])),
-          );
-          await fetchSalaryData(); // Refresh data
+          dialog.dismiss();
+          Navigator.pop(context);
+          toast.showToast("Salary Updated Successfully", Colors.green, Colors.white);
+          await fetchSalaryData();
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Failed: ${responseData['message']}")),
-          );
+          dialog.dismiss();
+          customDialog(context).showError("Error", responseData['message']);
         }
-      }
-      // Handle non-200 status codes (e.g., 404, 500)
-      else {
-        print('Request failed with status: ${response.statusCode}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Server error: ${response.statusCode}")),
-        );
+      } else {
+        dialog.dismiss();
+        customDialog(context).showError("Error", "Failed to update salary. ${response.statusCode}.");
       }
     } on TimeoutException {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Request timed out")),
-      );
+      dialog.dismiss();
+      customDialog(context).showError("Network Timeout", 'The request took too long to complete. Please try again.');
     } catch (e) {
-      print('Error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: ${e.toString()}")),
-      );
+      print('Update error: $e');
+      dialog.dismiss();
+      customDialog(context).showError("Error", "Failed to update salary. Please try again.");
     } finally {
       client.close();
     }
   }
 
-  Future<void> deleteSalary(String employeeId, String date) async {
+  Future<void> deleteSalary(String date, String employeeId) async {
+    final dialog = customDialog(context);
     final client = http.Client();
+    dialog.showLoading("Deleting...", subtitle: "Please wait");
     try {
-      final response = await client.post(
+      final payload = {
+        'date': date, // Should be in 'yyyy-MM-dd' format
+        'employeeId': employeeId,
+      };
+
+      var response = await client.post(
         Uri.parse('${apiClass.baseUrlStaff}?action=deleteSalaryRecord'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'employeeId': employeeId,
-          'date': date,
-        }),
-      ).timeout(const Duration(seconds: 10));
+        body: json.encode(payload),
+      ).timeout(const Duration(seconds: 30));
+
+      // Handle redirect if needed
+      if (response.statusCode == 302 || response.statusCode == 303) {
+        final redirectUrl = response.headers['location'];
+        if (redirectUrl != null) {
+          response = await client.get(
+            Uri.parse(redirectUrl),
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+      }
 
       final responseData = json.decode(response.body);
-      if (responseData['status'] == 'success') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(responseData['message'])),
-        );
-        await fetchSalaryData(); // Refresh data
+      print('Delete Response Status: ${response.statusCode}');
+      print('Delete Response: $responseData');
+      if (response.statusCode == 200) {
+        if (responseData['status'] == 'success') {
+          dialog.dismiss(); // Dismiss loading dialog
+          toast.showToast(responseData['message'], Colors.green, Colors.white);
+          await fetchSalaryData(); // Refresh the data
+        } else {
+          dialog.dismiss();
+          customDialog(context).showError("Error", responseData['message']);
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(responseData['message'])),
-        );
+        print('Delete Response Status: ${response.statusCode}');
+        dialog.dismiss();
+        customDialog(context).showError("Server error", "${response.statusCode}");
       }
+    } on TimeoutException {
+      print("Request timed out");
+      dialog.dismiss();
+      customDialog(context).showError("Network Timeout", "The request took too long to complete. Please try again.");
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: ${e.toString()}")),
-      );
+      print('Delete error: $e');
+    dialog.dismiss();
+      customDialog(context).showError("Error", e.toString());
     } finally {
       client.close();
     }
@@ -263,6 +283,8 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
   void showAddEditDialog({Salary? record}) {
     final isUpdate = record != null;
     print('isUpdate: $isUpdate');
+    //dialog.showLoading(isUpdate ? "Updating..." : "Adding Salary Info...", subtitle: "Please wait");
+
     TextEditingController name = TextEditingController(text: record?.name);
     final TextEditingController id = TextEditingController(text: record?.employeeId);
     final TextEditingController date = TextEditingController(text: record?.date ?? DateFormat('yyyy-MM-dd').format(DateTime.now()));
@@ -387,10 +409,8 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
                           "remaining": remain.toString(),
                           "note": notes.text,
                         };
-
-
                         isUpdate ? updateSalary(data) : addSalary(data);
-                        Navigator.pop(context);
+
                       },
                     )
                   ],
@@ -414,104 +434,6 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
     );
   }
 
-  // void showAddEditDialog({Salary? record}) {
-  //   final isUpdate = record != null;
-  //   TextEditingController name = TextEditingController(text: record?.name);
-  //   final TextEditingController id = TextEditingController(text: record?.employeeId);
-  //   final TextEditingController date = TextEditingController(text: record?.date ?? DateFormat('yyyy-MM-dd').format(DateTime.now()));
-  //   TextEditingController salary = TextEditingController(text: record?.basicSalary.toString());
-  //   final TextEditingController advance = TextEditingController(text: record?.advance.toString() ?? '0');
-  //   final TextEditingController paidNow = TextEditingController(text: record?.paidNow.toString() ?? '0');
-  //   final TextEditingController notes = TextEditingController(text: record?.notes);
-  //
-  //   showDialog(
-  //     barrierDismissible: false,
-  //     context: context,
-  //     builder: (_) => AlertDialog(
-  //       title: Text(isUpdate ? "Update Salary" : "Add Salary"),
-  //       content: SingleChildScrollView(
-  //         child: Column(
-  //           children: [
-  //             TextField(controller: id, decoration: InputDecoration(labelText: "Employee ID"), readOnly: isUpdate),
-  //             DropdownButtonFormField<String>(
-  //               value: selectedStaffId,
-  //               decoration: InputDecoration(labelText: 'Select Staff ID'),
-  //               items: staffBasicList.map((staff) {
-  //                 return DropdownMenuItem<String>(
-  //                   value: staff['staff_id'],
-  //                   child: Text(staff['staff_id']),
-  //                 );
-  //               }).toList(),
-  //               onChanged: (value) {
-  //                 setState(() {
-  //                   selectedStaffId = value;
-  //                   final selected = staffBasicList.firstWhere(
-  //                         (s) => s['staff_id'] == value,
-  //                     orElse: () => {},
-  //                   );
-  //                   name.text = selected['name'] ?? '';
-  //                   salary.text = selected['salary']?.toString() ?? '';
-  //                 });
-  //               },
-  //
-  //             ),
-  //             TextField(controller: name, decoration: InputDecoration(labelText: "Name"), readOnly: true),
-  //             TextField(controller: date, decoration: InputDecoration(labelText: "Date"), readOnly: true,
-  //               onTap: () async {
-  //                 DateTime? picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
-  //                 if (picked != null) date.text = DateFormat('yyyy-MM-dd').format(picked);
-  //               },
-  //             ),
-  //             TextField(controller: salary, decoration: InputDecoration(labelText: "Basic Salary"), keyboardType: TextInputType.number,readOnly: true),
-  //             TextField(controller: advance, decoration: InputDecoration(labelText: "Advance"), keyboardType: TextInputType.number),
-  //             TextField(controller: paidNow, decoration: InputDecoration(labelText: "Paid Now"), keyboardType: TextInputType.number),
-  //             TextField(controller: notes, decoration: InputDecoration(labelText: "Notes")),
-  //           ],
-  //         ),
-  //       ),
-  //       actions: [
-  //         TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
-  //         ElevatedButton(
-  //           onPressed: () {
-  //             final int basic = int.tryParse(salary.text) ?? 0;
-  //             final int adv = int.tryParse(advance.text) ?? 0;
-  //             final int paid = int.tryParse(paidNow.text) ?? 0;
-  //             final int total = adv + paid;
-  //             final int remain = basic - total;
-  //             Map<String, dynamic> data = {
-  //               "date": date.text,
-  //               "employeeId": id.text,
-  //               "employeeName": name.text,
-  //               "basicSalary": salary.text,
-  //               "advancePaid": advance.text,
-  //               "paidNow": paidNow.text,
-  //               "totalPaid": total.toString(),
-  //               "remaining": remain.toString(),
-  //               "note": notes.text,
-  //             };
-  //
-  //
-  //             final newSalary = Salary(
-  //               date: date.text,
-  //               employeeId: id.text,
-  //               name: name.text,
-  //               month: "month.text",
-  //               basicSalary: basic,
-  //               advance: adv,
-  //               paidNow: paid,
-  //               totalPaid: total,
-  //               remaining: remain,
-  //               notes: notes.text,
-  //             );
-  //             isUpdate ? updateSalary(newSalary) : addSalary(data);
-  //           },
-  //           child: Text(isUpdate ? "Update" : "Add"),
-  //         )
-  //       ],
-  //     ),
-  //   );
-  // }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -532,15 +454,59 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
                 if (direction == DismissDirection.endToStart) {
                   showAddEditDialog(record: s);
                   return false;
-                } else {
-                  await deleteSalary(s.employeeId, s.date);
-                  return true;
+                }
+                else {
+                  bool confirmed = await showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text("Confirm Delete"),
+                      content: Text("Are you sure you want to delete this record?"),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: Text("Cancel"),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                          child: Text("Delete"),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed) {
+                    await deleteSalary(s.date, s.employeeId);
+                    return true;
+                  }
+                  return false;
                 }
               },
-              child: ListTile(
-                title: Text(s.name),
-                subtitle: Text("Month: ${s.month} | Paid: ${s.totalPaid} | Remain: ${s.remaining}"),
-                trailing: Text(s.date),
+              child: Card(
+                margin: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  contentPadding: EdgeInsets.all(16),
+                  title: Text(s.name, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: 4),
+                      Text("Month: ${_formatMonthYear(s.date)}"),
+                      Text("Paid: ${s.totalPaid} | Remain: ${s.remaining}"),
+                    ],
+                  ),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.calendar_today, size: 16, color: Colors.black),
+                      SizedBox(height: 4),
+                      Text(s.date, style: TextStyle(fontSize: 12, color: Colors.black)),
+                    ],
+                  ),
+                ),
               ),
             );
           },
@@ -552,4 +518,13 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
       ),
     );
   }
+  String _formatMonthYear(String rawDate) {
+    try {
+      final date = DateTime.parse(rawDate);
+      return DateFormat('MMMM yyyy').format(date); // Example: July 2025
+    } catch (e) {
+      return rawDate; // fallback if parsing fails
+    }
+  }
+
 }

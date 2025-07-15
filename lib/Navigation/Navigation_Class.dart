@@ -9,7 +9,7 @@ import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
 import 'package:restaurant_inventory/sell/SellScreen.dart';
 
 import '../DashboardScreen.dart';
-import '../Food List/CombinedManagementScreen.dart';
+import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
 import '../Staff/StaffListScreen.dart';
 
@@ -23,22 +23,22 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
-    SalaryRecordScreen(),
+    DashboardScreen(),
     CombinedSellManagementScreen(),
     CostingRecordScreen(),
     StaffListScreen(),
-
-    CombinedManagementScreen(),
+    SalaryRecordScreen(),
+    combinedAddFoodListManagementScreen(),
     MenuItemManagerScreen(),
-    SellScreen(),
     SellRecordScreen(),
-    DashboardScreen(),
   ];
   final List<String> _pageTitles = [
+    "Dashboard",
     'Sell Management',
     'Costing Management',
-    'Food List Management',
     "Staff Management",
+    "Salary Record",
+    'Food List Management',
     'Add Employee',
     'Staff Payment',
     "Show All Costing",
@@ -145,51 +145,36 @@ class _Navigation_ClassState extends State<Navigation_Class> {
             _buildDrawerHeader(context),
             ListTile(
               leading: Icon(Icons.home),
-              title: Text('Sell Management'),
+              title: Text('Dashboard'),
               onTap: () => _onSelectItem(0),
             ),
 
             ListTile(
               leading: Icon(Icons.category),
-              title: Text('Costing Management'),
+              title: Text('Sell Management'),
               onTap: () => _onSelectItem(1),
             ),
             ListTile(
               leading: Icon(Icons.person),
-              title: Text('Staff Management',),
+              title: Text('Costing Management',),
               onTap: () => _onSelectItem(2),
             ),
             ListTile(
               leading: Icon(Icons.restaurant_menu),
-              title: Text('Food List Management'),
+              title: Text('Staff Management'),
               onTap: () => _onSelectItem(3),
             ),
             ListTile(
               leading: Icon(Icons.calculate_outlined),
-              title: Text('View All Costing'),
+              title: Text('Salary Records'),
               onTap: () => _onSelectItem(4),
             ),
             ListTile(
               leading: Icon(Icons.person_add),
-              title: Text('Add Employee'),
+              title: Text('Add Food List'),
               onTap: () => _onSelectItem(5),
             ),
-            ListTile(
-              leading: Icon(Icons.payments),
-              title: Text('Staff Payment'),
-              onTap: () => _onSelectItem(6),
-            ),
 
-            ListTile(
-              leading: Icon(Icons.dataset),
-              title: Text('Calculate Cash'),
-              onTap: () => _onSelectItem(7),
-            ),
-            ListTile(
-              leading: Icon(Icons.calculate_outlined),
-              title: Text('Load Menu Items'),
-              onTap: () => _onSelectItem(8),
-            ),
           ],
         ),
       )
