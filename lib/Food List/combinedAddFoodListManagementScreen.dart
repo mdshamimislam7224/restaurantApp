@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'CategoryManagerScreen.dart';
 import 'menu_item_manager_screen.dart';
 
-class CombinedManagementScreen extends StatefulWidget {
-  const CombinedManagementScreen({super.key});
+class combinedAddFoodListManagementScreen extends StatefulWidget {
+  const combinedAddFoodListManagementScreen({super.key});
 
   @override
-  State<CombinedManagementScreen> createState() => _CombinedManagementScreenState();
+  State<combinedAddFoodListManagementScreen> createState() => _combinedAddFoodListManagementScreenState();
 }
 
-class _CombinedManagementScreenState extends State<CombinedManagementScreen> {
+class _combinedAddFoodListManagementScreenState extends State<combinedAddFoodListManagementScreen> {
   int _selectedIndex = 0;
   final List<Widget> _screens = [
     const CategoryManagerScreen(),

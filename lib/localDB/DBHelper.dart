@@ -81,6 +81,16 @@ class DBHelper {
     imagesData TEXT -- base64 list (JSON encoded)
   )
 ''');
+        await db.execute('''
+        CREATE TABLE staff_basic_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          staff_id TEXT,
+          name TEXT,
+          salary TEXT
+        )
+      ''');
+
+
       },
     );
   }
@@ -375,6 +385,13 @@ class DBHelper {
     final db = await DBHelper.db;
     await db.delete('staff_signup', where: 'id = ?', whereArgs: [id]);
   }
+
+
+  static Future<List<Map<String, dynamic>>> getAllCachedStaff() async {
+    final dbClient = await db;
+    return await dbClient.query('staff_basic_cache', orderBy: 'staff_id ASC');
+  }
+
 
 
 }
