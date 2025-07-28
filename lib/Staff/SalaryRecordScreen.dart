@@ -70,6 +70,7 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
     final staff = await DBHelper.getAllCachedStaff();
     setState(() {
       staffBasicList = staff;
+      print("✅ synced to local cache. $staffBasicList");
     });
   }
   Future<void> fetchSalaryData() async {
@@ -98,7 +99,6 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
         },
         body: json.encode(salary),
       ).timeout(const Duration(seconds: 300));
-
       // Manually follow redirect if needed
       if (response.statusCode == HttpStatus.found ||
           response.statusCode == HttpStatus.movedPermanently ||
@@ -282,140 +282,229 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
 
   void showAddEditDialog({Salary? record}) {
     final isUpdate = record != null;
-    print('isUpdate: $isUpdate');
-    //dialog.showLoading(isUpdate ? "Updating..." : "Adding Salary Info...", subtitle: "Please wait");
+    final formKey = GlobalKey<FormState>(); // Add form key for validation
 
-    TextEditingController name = TextEditingController(text: record?.name);
-    final TextEditingController id = TextEditingController(text: record?.employeeId);
-    final TextEditingController date = TextEditingController(text: record?.date ?? DateFormat('yyyy-MM-dd').format(DateTime.now()));
-    TextEditingController salary = TextEditingController(text: record?.basicSalary.toString());
-    final TextEditingController advance = TextEditingController(text: record?.advance.toString() ?? '0');
-    final TextEditingController paidNow = TextEditingController(text: record?.paidNow.toString() ?? '0');
-    final TextEditingController notes = TextEditingController(text: record?.notes);
-    print('record: $record');
+    // Initialize controllers
+    TextEditingController name = TextEditingController();
+    final TextEditingController id = TextEditingController();
+    final TextEditingController date = TextEditingController(
+        text: record?.date ?? DateFormat('yyyy-MM-dd').format(DateTime.now()));
+    TextEditingController salary = TextEditingController();
+    final TextEditingController advance = TextEditingController(
+        text: record?.advance.toString() ?? '0');
+    final TextEditingController paidNow = TextEditingController(
+        text: record?.paidNow.toString() ?? '0');
+    final TextEditingController notes = TextEditingController(
+        text: record?.notes);
+    // Set initial values if updating
+    if (isUpdate) {
+      name.text = record.name;
+      id.text = record.employeeId;
+      salary.text = record.basicSalary.toString();
+      selectedStaffId = record.employeeId;
+    } else {
+      selectedStaffId = null;
+    }
     showDialog(
       barrierDismissible: false,
       context: context,
       builder: (_) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isUpdate ? "Update Salary Record" : "Add Salary Record",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedStaffId,
-                  decoration: InputDecoration(
-                    labelText: 'Select Staff ID',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Form(
+          key: formKey, // Add Form widget
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            padding: const EdgeInsets.all(20),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isUpdate ? "Update Salary Record" : "Add Salary Record",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                  items: staffBasicList.map((staff) {
-                    return DropdownMenuItem<String>(
-                      value: staff['staff_id'],
-                      child: Text(staff['staff_id']),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedStaffId = value;
-                      final selected = staffBasicList.firstWhere(
-                            (s) => s['staff_id'] == value,
-                        orElse: () => {},
-                      );
-                      id.text = selected['staff_id'] ?? '';
-                      name.text = selected['name'] ?? '';
-                      salary.text = selected['salary']?.toString() ?? '';
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: date,
-                  readOnly: true,
-                  decoration: InputDecoration(
-                    labelText: "Date",
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  onTap: () async {
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
+                  const SizedBox(height: 16),
 
-                    if (picked != null) {
-                      // Convert to local time and format
-                      DateTime localPicked = picked.toLocal();
-                      date.text = DateFormat('yyyy-MM-dd').format(localPicked);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-              TextField(controller: name, readOnly: true, decoration: InputDecoration(labelText: "Name", border: OutlineInputBorder(),),),
-                SizedBox(height: 12,),
-                TextField(controller: salary, readOnly: true, decoration: InputDecoration(labelText: "Basic Salary", border: OutlineInputBorder(),),),
-                const SizedBox(height: 12),
-                _numberInputField(label: 'Advance Salary', controller: advance),
-                const SizedBox(height: 12),
-                _numberInputField(label: 'Paid Salary', controller: paidNow),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: notes,
-                  decoration: InputDecoration(
-                    labelText: "Notes",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text("Cancel", style: TextStyle(color: Colors.grey[700])),
+                  // Staff ID Dropdown
+                  DropdownButtonFormField<String>(
+                    value: selectedStaffId,
+                    decoration: InputDecoration(
+                      labelText: 'Staff ID *',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
-                    ElevatedButton.icon(
-                      icon: Icon(isUpdate ? Icons.update : Icons.add),
-                      label: Text(isUpdate ? "Update" : "Add"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      ),
-                      onPressed: () {
-                        final int basic = int.tryParse(salary.text) ?? 0;
-                        final int adv = int.tryParse(advance.text) ?? 0;
-                        final int paid = int.tryParse(paidNow.text) ?? 0;
-                        final int total = adv + paid;
-                        final int remain = basic - total;
-                        Map<String, dynamic> data = {
-                          "date": date.text,
-                          "employeeId": id.text,
-                          "employeeName": name.text,
-                          "basicSalary": salary.text,
-                          "advancePaid": advance.text,
-                          "paidNow": paidNow.text,
-                          "totalPaid": total.toString(),
-                          "remaining": remain.toString(),
-                          "note": notes.text,
-                        };
-                        isUpdate ? updateSalary(data) : addSalary(data);
+                    validator: (value) => value == null ? 'Please select Staff ID' : null,
+                    items: isUpdate
+                        ? [
+                      DropdownMenuItem<String>(
+                        value: record.employeeId,
+                        child: Text(record.employeeId),
+                      )
+                    ]
+                        : staffBasicList.map((staff) {
+                      return DropdownMenuItem<String>(
+                        value: staff['staff_id'],
+                        child: Text(staff['staff_id']),
+                      );
+                    }).toList(),
+                    onChanged: isUpdate
+                        ? null
+                        : (value) {
+                      setState(() {
+                        selectedStaffId = value;
+                        final selected = staffBasicList.firstWhere(
+                              (s) => s['staff_id'] == value,
+                          orElse: () => {},
+                        );
+                        id.text = selected['staff_id'] ?? '';
+                        name.text = selected['name'] ?? '';
+                        salary.text = selected['salary']?.toString() ?? '';
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
 
-                      },
-                    )
-                  ],
-                )
-              ],
+                  // Date Picker
+                  TextFormField(
+                    controller: date,
+                    readOnly: true,
+                    decoration: InputDecoration(
+                      labelText: "Date *",
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    validator: (value) => value?.isEmpty ?? true ? 'Please select date' : null,
+                    onTap: () async {
+                      DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        date.text = DateFormat('yyyy-MM-dd').format(picked.toLocal());
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Name Field
+                  TextFormField(
+                    controller: name,
+                    readOnly: true,
+                    decoration: InputDecoration(
+                      labelText: "Name *",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) => value?.isEmpty ?? true ? 'Name is required' : null,
+                  ),
+                  SizedBox(height: 12),
+
+                  // Basic Salary Field
+                  TextFormField(
+                    controller: salary,
+                    readOnly: true,
+                    decoration: InputDecoration(
+                      labelText: "Basic Salary *",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value?.isEmpty ?? true) return 'Basic salary is required';
+                      if (int.tryParse(value!) == null) return 'Enter valid number';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Advance Salary Field
+                  TextFormField(
+                    controller: advance,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "Advance Salary *",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value?.isEmpty ?? true) return 'Advance is required';
+                      if (int.tryParse(value!) == null) return 'Enter valid number';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Paid Now Field
+                  TextFormField(
+                    controller: paidNow,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: "Paid Now *",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value?.isEmpty ?? true) return 'Paid amount is required';
+                      if (int.tryParse(value!) == null) return 'Enter valid number';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Notes Field
+                  TextFormField(
+                    controller: notes,
+                    decoration: InputDecoration(
+                      labelText: "Notes",
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Action Buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text("Cancel",
+                            style: TextStyle(color: Colors.grey[700])),
+                      ),
+                      ElevatedButton.icon(
+                        icon: Icon(isUpdate ? Icons.update : Icons.add),
+                        label: Text(isUpdate ? "Update" : "Add"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
+                        ),
+                        onPressed: () {
+                          if (formKey.currentState!.validate()) {
+                            final int basic = int.tryParse(salary.text) ?? 0;
+                            final int adv = int.tryParse(advance.text) ?? 0;
+                            final int paid = int.tryParse(paidNow.text) ?? 0;
+                            final int total = adv + paid;
+                            final int remain = basic - total;
+
+                            Map<String, dynamic> data = {
+                              "date": date.text,
+                              "employeeId": id.text,
+                              "employeeName": name.text,
+                              "basicSalary": salary.text,
+                              "advancePaid": advance.text,
+                              "paidNow": paidNow.text,
+                              "totalPaid": total.toString(),
+                              "remaining": remain.toString(),
+                              "note": notes.text,
+                            };
+
+                            isUpdate ? updateSalary(data) : addSalary(data);
+                          }
+                        },
+                      )
+                    ],
+                  )
+                ],
+              ),
             ),
           ),
         ),
