@@ -1,18 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:restaurant_inventory/Food%20List/CategoryManagerScreen.dart';
 import 'package:restaurant_inventory/Staff/SalaryRecordScreen.dart';
-import 'package:restaurant_inventory/Staff/StaffScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
 import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
-import 'package:restaurant_inventory/sell/SellScreen.dart';
-
 import '../DashboardScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
 import '../Staff/StaffListScreen.dart';
-
 
 class Navigation_Class extends StatefulWidget {
   @override
@@ -47,12 +42,13 @@ class _Navigation_ClassState extends State<Navigation_Class> {
 
   ];
 
-  final List<Color> _appBarColors = [
-    Colors.blue,
-    Color(0xFFFFFFFF),
-    Color(0xFF1C1C2B),
-    Colors.teal,
 
+  final List<Color> _appBarColors = [
+    Color(0x341771).withOpacity(0.5),
+    Color(0x4E0BDC).withOpacity(0.5),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771),
+    Colors.teal,
 
   ];
 
@@ -116,12 +112,12 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         elevation: 0,
         title: Text(
           _pageTitles[_selectedDrawerIndex],
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold,color:Colors.black),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold,color:Colors.white),
         ),
         centerTitle: true,
         leading: _selectedDrawerIndex != 0
             ? IconButton(
-          icon: Icon(Icons.arrow_back,color: Colors.black,),
+          icon: Icon(Icons.arrow_back,color: Colors.white,),
           onPressed: () {
             setState(() {
               _selectedDrawerIndex = 0;
@@ -129,11 +125,10 @@ class _Navigation_ClassState extends State<Navigation_Class> {
           },
         )
             : null,
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(1.0),
-          child: Divider(
-            color: Colors.grey.shade300,
-            thickness: 1.0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
           ),
         ),
       ),

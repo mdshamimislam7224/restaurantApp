@@ -1,7 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
-
 import 'SellScreen.dart';
+
+// A placeholder page to demonstrate navigation.
+class SecondPage extends StatelessWidget {
+  const SecondPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Second Page'),
+      ),
+      body: const Center(
+        child: Text(
+          'This is the second page!',
+          style: TextStyle(fontSize: 24),
+        ),
+      ),
+    );
+  }
+}
+
 class CombinedSellManagementScreen extends StatefulWidget {
   const CombinedSellManagementScreen({super.key});
 
@@ -33,7 +53,7 @@ class _CombinedManagementScreenState extends State<CombinedSellManagementScreen>
                   child: SizedBox(
                     width: double.infinity,
                     child: SegmentedButton<int>(
-                      style: ButtonStyle(
+                      style: const ButtonStyle(
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       segments: const [
@@ -50,6 +70,11 @@ class _CombinedManagementScreenState extends State<CombinedSellManagementScreen>
                       ],
                       selected: {_selectedIndex},
                       onSelectionChanged: (newSelection) {
+                        // MODIFIED: Navigate to the SecondPage when either tab is selected.
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const SellRecordScreen()),
+                        );
                         setState(() {
                           _selectedIndex = newSelection.first;
                         });
