@@ -227,7 +227,7 @@ class _SellScreenState extends State<SellScreen> {
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
                 value: paymentMethod,
-                items: ["Cash", "bKash", "Card", "Nagad"]
+                items: ["Cash", "bKash", "Card", "Nagad", "Rocket", "Bank Transfer","Other"]
                     .map((method) => DropdownMenuItem(value: method, child: Text(method)))
                     .toList(),
                 onChanged: (value) {

@@ -1,633 +1,514 @@
-import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:percent_indicator/percent_indicator.dart';
 import '../localDB/DBHelper.dart';
 
-class SellRecordScreen extends StatefulWidget {
-  final VoidCallback? onRefresh;
-
-  const SellRecordScreen({super.key, this.onRefresh});
-
+class CashCalculationScreen extends StatefulWidget {
+  const CashCalculationScreen({Key? key}) : super(key: key);
 
   @override
-  State<SellRecordScreen> createState() => _SellRecordScreenState();
+  _CashCalculationScreenState createState() => _CashCalculationScreenState();
 }
 
+class _CashCalculationScreenState extends State<CashCalculationScreen> {
+  DateTime _selectedDate = DateTime.now();
+  bool _isLoading = true;
+  double _totalSales = 0.0;
+  double _totalCosting = 0.0;
+  double _profit = 0.0;
+  double _profitPercentage = 0.0;
 
-class _SellRecordScreenState extends State<SellRecordScreen> {
-  List<Map<String, dynamic>> sales = [];
-  List<Map<String, dynamic>> saleItems = [];
-  List<Map<String, dynamic>> filteredSales = [];
-  final GlobalKey<_SellRecordScreenState> _sellRecordScreenKey = GlobalKey();
-  List<String> categoryNames = [];
-  String? selectedCategory;
-  List<Map<String, dynamic>> menuItems = [];
-  Map<String, dynamic>? selectedMenuItem;
-  List<Map<String, dynamic>> selectedItems = [];
-  int quantity = 1;
-  final TextEditingController _discountController = TextEditingController(text: "0");
-  final Map<String, bool> _expandedItems = {}; // Track expanded state for each sale
-  String? _currentlyExpandedId;
+  // For the bar chart
+  List<BarChartGroupData> _barGroups = [];
+  double _minY = 0;
+  double _maxY = 0;
+  List<String> _xAxisLabels = [];
+
+  // For the left-side description
+  final List<Map<String, dynamic>> _profitLossData = [
+    {'label': 'Profit', 'value': 0, 'color': Colors.green},
+    {'label': 'Loss', 'value': 0, 'color': Colors.red},
+  ];
+
   @override
   void initState() {
     super.initState();
-    loadSales();
-    loadCategories();
+    _loadAllDataAndCalculateMetrics(_selectedDate);
   }
 
-  Future<void> loadSales() async {
-    final db = await DBHelper.db;
-    final result = await db.query('sales', orderBy: 'date DESC');
-    setState(() {
-      sales = result;
-      // Initialize expanded state for each sale
-      for (var sale in sales) {
-        _expandedItems[sale['id']] = _expandedItems[sale['id']] ?? false;
+  Future<void> _loadAllDataAndCalculateMetrics(DateTime date) async {
+    setState(() => _isLoading = true);
+
+    try {
+      final allSales = await DBHelper.getSales();
+      final allCosting = await DBHelper.getCostingRecords();
+      final dateFormat = DateFormat('yyyy-MM-dd');
+      final selectedDateString = dateFormat.format(date);
+
+      // Calculate daily totals for selected date
+      _totalSales = allSales.where((sale) {
+        final saleDate = DateFormat('MM/dd/yyyy').parse(sale['date']);
+        return dateFormat.format(saleDate) == selectedDateString;
+      }).fold(0.0, (sum, sale) => sum + (sale['total'] as double));
+
+      _totalCosting = allCosting.where((record) {
+        return record['date'] == selectedDateString;
+      }).fold(0.0, (sum, record) => sum + (record['amount'] as double));
+
+      _profit = _totalSales - _totalCosting;
+
+      // Calculate profit percentage
+      if (_totalSales > 0) {
+        _profitPercentage = (_profit / _totalSales).clamp(0.0, 1.0);
       }
-    });
+
+      // Update profit/loss legend data
+      if (_profit >= 0) {
+        _profitLossData[0]['value'] = _profit;
+        _profitLossData[1]['value'] = 0;
+      } else {
+        _profitLossData[0]['value'] = 0;
+        _profitLossData[1]['value'] = _profit.abs();
+      }
+
+      // Prepare chart data for the selected day only
+      _barGroups = [];
+      _xAxisLabels = [];
+
+      // Create a single bar for the selected date
+      final profit = _totalSales - _totalCosting;
+      _barGroups.add(BarChartGroupData(
+        x: 0,
+        barRods: [BarChartRodData(
+          toY: profit,
+          color: profit >= 0 ? Colors.green : Colors.red,
+          width: 30,
+          borderRadius: BorderRadius.zero,
+        )],
+      ));
+
+      _xAxisLabels.add(DateFormat('MM/dd').format(date));
+
+      // Set min/max Y values for proper chart scaling
+      _minY = profit < 0 ? profit * 1.1 : 0;
+      _maxY = profit > 0 ? profit * 1.1 : 0;
+
+      setState(() => _isLoading = false);
+
+    } catch (e) {
+      print('Error calculating metrics: $e');
+      setState(() => _isLoading = false);
+    }
   }
 
-  Future<void> loadSaleItems(String saleId) async {
-    final db = await DBHelper.db;
-    final result = await db.query('sales_items', where: 'saleId = ?', whereArgs: [saleId]);
-    setState(() {
-      saleItems = result;
-    });
-  }
-
-  void deleteSale(String id) async {
-    final db = await DBHelper.db;
-    await db.delete('sales_items', where: 'saleId = ?', whereArgs: [id]);
-    await db.delete('sales', where: 'id = ?', whereArgs: [id]);
-    loadSales();
-  }
-
-  void showUpdateDialog(Map<String, dynamic> sale) async {
-    final discountController = TextEditingController(text: sale['discount'].toString());
-    String selectedMethod = sale['paymentMethod'] ?? 'Cash';
-    String selectedStatus = sale['paymentStatus'] ?? 'Unpaid';
-    int quantity = 1;
-    await loadSaleItems(sale['id']);
-    List<Map<String, dynamic>> existingItems = saleItems.map((e) => Map<String, dynamic>.from(e)).toList();
-    String? selectedCategoryInDialog;
-    Map<String, dynamic>? selectedMenuItemInDialog;
-    showDialog(
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
       context: context,
-      barrierDismissible: false,
-      builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            double subtotal = 0;
-            double discount = 0;
-            double grandTotal = 0;
-            void recalculateTotals() {
-              subtotal = existingItems.fold(0, (sum, item) => sum + (item['quantity'] * item['price']));
-              discount = double.tryParse(discountController.text) ?? 0.0;
-              grandTotal = subtotal - discount;
-              if (grandTotal < 0) grandTotal = 0;
-            }
-            recalculateTotals();
-
-            void addOrUpdateItem() {
-              if (selectedMenuItemInDialog != null) {
-                final existingIndex = existingItems.indexWhere(
-                        (item) => item['menuItemId'] == selectedMenuItemInDialog!['id']
-                );
-
-                if (existingIndex != -1) {
-                  setStateDialog(() {
-                    existingItems[existingIndex]['quantity'] += quantity;
-                    existingItems[existingIndex]['total'] =
-                        existingItems[existingIndex]['quantity'] *
-                            existingItems[existingIndex]['price'];
-                    recalculateTotals();
-                  });
-                } else {
-                  setStateDialog(() {
-                    existingItems.add({
-                      'menuItemId': selectedMenuItemInDialog!['id'],
-                      'name': selectedMenuItemInDialog!['name'],
-                      'price': selectedMenuItemInDialog!['price'],
-                      'quantity': quantity,
-                      'total': selectedMenuItemInDialog!['price'] * quantity,
-                    });
-                    recalculateTotals();
-                  });
-                }
-
-                quantity = 1;
-                selectedMenuItemInDialog = null;
-              }
-            }
-            return Dialog(
-              insetPadding: EdgeInsets.zero,
-              backgroundColor: Colors.white,
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height,
-                width: MediaQuery.of(context).size.width,
-                child: Scaffold(
-                  appBar: AppBar(
-                    title:  Text("Update: ${sale['id']}"),
-                    automaticallyImplyLeading: false,
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      )
-                    ],
-                  ),
-                  body: SingleChildScrollView(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      children: [
-                        // Category Dropdown (unchanged)
-                        DropdownSearch<String>(
-                          items: categoryNames,
-                          selectedItem: selectedCategoryInDialog,
-                          popupProps: const PopupProps.menu(showSearchBox: true),
-                          dropdownBuilder: (_, item) => Text(item ?? "Select Category"),
-                          onChanged: (val) async {
-                            selectedCategoryInDialog = val;
-                            await loadMenuItemsByCategory(val!);
-                            setStateDialog(() {});
-                          },
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Menu Item Dropdown (unchanged)
-                        DropdownSearch<Map<String, dynamic>>(
-                          items: menuItems,
-                          selectedItem: selectedMenuItemInDialog,
-                          itemAsString: (item) => item['name'],
-                          popupProps: const PopupProps.menu(showSearchBox: true),
-                          dropdownBuilder: (_, item) => Text(item?['name'] ?? "Select Menu Item"),
-                          onChanged: (val) {
-                            setStateDialog(() => selectedMenuItemInDialog = val);
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        // Quantity Controls (unchanged)
-                        Row(
-                          children: [
-                            const Text("Quantity: "),
-                            IconButton(
-                              icon: const Icon(Icons.remove),
-                              onPressed: () {
-                                if (quantity > 1) setStateDialog(() => quantity--);
-                              },
-                            ),
-                            Text(quantity.toString()),
-                            IconButton(
-                              icon: const Icon(Icons.add),
-                              onPressed: () {
-                                setStateDialog(() => quantity++);
-                              },
-                            ),
-                            const Spacer(),
-                            ElevatedButton(
-                              onPressed: addOrUpdateItem, // Updated function
-                              child: const Text("Add Item"),
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-
-                        // Existing Items List (unchanged)
-                        const Text("Existing Items (Edit/Delete):"),
-                        ...existingItems.map((item) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text("${item['name']}"),
-                                      Text("৳${item['price']} x ${item['quantity']} = ৳${item['total']}"),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.remove),
-                                          onPressed: () {
-                                            if (item['quantity'] > 1) {
-                                              setStateDialog(() {
-                                                item['quantity'] -= 1;
-                                                item['total'] = item['quantity'] * item['price'];
-                                                recalculateTotals();
-                                              });
-                                            }
-                                          },
-                                        ),
-                                        Text(item['quantity'].toString()),
-                                        IconButton(
-                                          icon: const Icon(Icons.add),
-                                          onPressed: () {
-                                            setStateDialog(() {
-                                              item['quantity'] += 1;
-                                              item['total'] = item['quantity'] * item['price'];
-                                              recalculateTotals();
-                                            });
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      onPressed: () {
-                                        setStateDialog(() {
-                                          existingItems.remove(item);
-                                          recalculateTotals();
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                )
-                              ],
-                            ),
-                          );
-                        }),
-                        const Divider(),
-
-                        // Discount Input (unchanged)
-                        TextField(
-                          controller: discountController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: "Discount"),
-                          onChanged: (_) => setStateDialog(() => recalculateTotals()),
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Payment Method Dropdown (unchanged)
-                        DropdownButtonFormField<String>(
-                          value: selectedMethod,
-                          items: ["Cash", "bKash", "Card", "Nagad"]
-                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (val) => setStateDialog(() => selectedMethod = val!),
-                          decoration: const InputDecoration(labelText: "Payment Method"),
-                        ),
-
-                        // Payment Status Dropdown (unchanged)
-                        DropdownButtonFormField<String>(
-                          value: selectedStatus,
-                          items: ["Unpaid", "Paid"]
-                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (val) => setStateDialog(() => selectedStatus = val!),
-                          decoration: const InputDecoration(labelText: "Status"),
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Summary (unchanged)
-                        Text("Subtotal: ৳${subtotal.toStringAsFixed(2)}"),
-                        Text("Discount: ৳${discount.toStringAsFixed(2)}"),
-                        Text(
-                          "Total Payable: ৳${grandTotal.toStringAsFixed(2)}",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Update Button (unchanged)
-                        ElevatedButton(
-                          onPressed: () async {
-                            final finalItems = existingItems.map((e) => {
-                              'id': e['menuItemId'] ?? e['id'],
-                              'name': e['name'],
-                              'price': e['price'],
-                              'quantity': e['quantity'],
-                              'total': e['total']
-                            }).toList();
-
-                            await DBHelper.updateFullSale(
-                              id: sale['id'],
-                              paymentMethod: selectedMethod,
-                              paymentStatus: selectedStatus,
-                              discount: discount,
-                              total: grandTotal,
-                              items: finalItems,
-                            );
-
-                            Navigator.pop(context);
-                            loadSales();
-                          },
-                          child: const Text("Update Sale"),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
     );
-  }
-
-  Future<void> loadCategories() async {
-    final allItems = await DBHelper.getMenuItems();
-    final uniqueCategories = allItems.map((e) => e['categoryName'].toString()).toSet().toList();
-    setState(() {
-      categoryNames = uniqueCategories;
-    });
-  }
-
-  Future<void> loadMenuItemsByCategory(String categoryName) async {
-    final allItems = await DBHelper.getMenuItems();
-    final filteredItems = allItems.where((item) => item['categoryName'] == categoryName).toList();
-    setState(() {
-      menuItems = filteredItems;
-      selectedMenuItem = null;
-    });
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+      _loadAllDataAndCalculateMetrics(_selectedDate);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Calculate totals (keep your existing calculation logic)
-    double totalSales = sales.fold(0, (sum, sale) => sum + (sale['total'] as double));
-    double totalDiscount = sales.fold(0, (sum, sale) => sum + (sale['discount'] as double));
-    double paidTotal = sales.where((s) => s['paymentStatus'] == 'Paid').fold(0, (sum, sale) => sum + (sale['total'] as double));
-    double unpaidTotal = sales.where((s) => s['paymentStatus'] == 'Unpaid').fold(0, (sum, sale) => sum + (sale['total'] as double));
-
-
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return Column(
-            children: [
-              // Summary Cards Grid - Fixed layout
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                crossAxisSpacing: 5,
-                mainAxisSpacing: 5,
-                padding: const EdgeInsets.all(8),
-                children: [
-                  _buildSummaryCard(
-                    context: context,
-                    title: "Total Sales",
-                    value: totalSales,
-                    color: Colors.blue[50]!,
-                    icon: Icons.attach_money,
-                  ),
-                  _buildSummaryCard(
-                    context: context,
-                    title: "Total Discount",
-                    value: totalDiscount,
-                    color: Colors.orange[50]!,
-                    icon: Icons.discount,
-                  ),
-                  _buildSummaryCard(
-                    context: context,
-                    title: "Paid Total",
-                    value: paidTotal,
-                    color: Colors.green[50]!,
-                    icon: Icons.check_circle,
-                  ),
-                  _buildSummaryCard(
-                    context: context,
-                    title: "Unpaid Total",
-                    value: unpaidTotal,
-                    color: Colors.red[50]!,
-                    icon: Icons.pending,
-                  ),
-                ],
-              ),
-              // Sales List with Color Coding
-              Expanded(
-                child: ListView.builder(
-                  itemCount: sales.length,
-                  itemBuilder: (context, index) {
-                    final sale = sales[index];
-                    final isExpanded = _currentlyExpandedId == sale['id'];
-                    final isPaid = sale['paymentStatus'] == 'Paid';
-
-                    return Dismissible(
-                      key: Key(sale['id']),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        color: Colors.red,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        child: const Icon(Icons.delete, color: Colors.white),
+      appBar: AppBar(
+        title: const Text('Cash Calculation & Profit'),
+        backgroundColor: Colors.blueGrey,
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            // Date selector card
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Selected Date:',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _selectDate(context),
+                      icon: const Icon(Icons.calendar_today),
+                      label: Text(
+                        DateFormat('yyyy-MM-dd').format(_selectedDate),
+                        style: const TextStyle(fontSize: 16),
                       ),
-                      confirmDismiss: (direction) async {
-                        return await showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text("Confirm Delete"),
-                            content: const Text("Are you sure you want to delete this sale?"),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
-                                child: const Text("Cancel"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Main content with chart and legend
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left side - Profit/Loss description
+                  Container(
+                    width: 120,
+                    padding: const EdgeInsets.only(top: 30),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _profitLossData.map((data) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: data['color'],
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(true),
-                                child: const Text("Delete", style: TextStyle(color: Colors.red)),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    data['label'],
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                  Text(
+                                    '\$${data['value'].toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: data['color'],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         );
-                      },
-                      onDismissed: (direction) {
-                        deleteSale(sale['id']);
-                        if (isExpanded) {
-                          setState(() => _currentlyExpandedId = null);
-                        }
-                      },
-                      child: Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        color: isPaid ? Colors.green[50] : Colors.orange[50], // Color based on status
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(
-                            color: isPaid ? Colors.green[100]! : Colors.orange[100]!,
-                            width: 1,
+                      }).toList(),
+                    ),
+                  ),
+
+                  // Right side - Chart and cards
+                  Expanded(
+                    child: Column(
+                      children: [
+                        // Circular percentage chart
+                        Container(
+                          padding: const EdgeInsets.all(16.0),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.2),
+                                spreadRadius: 2,
+                                blurRadius: 5,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'Total Products Sales',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${DateFormat('MMM dd').format(_selectedDate)} - ${DateFormat('MMM dd yyyy').format(_selectedDate.add(const Duration(days: 30)))}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              CircularPercentIndicator(
+                                radius: 80.0,
+                                lineWidth: 15.0,
+                                percent: _profitPercentage,
+                                center: Text(
+                                  "${(_profitPercentage * 100).toStringAsFixed(0)}%",
+                                  style: TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.bold,
+                                    color: _profit >= 0 ? Colors.green : Colors.red,
+                                  ),
+                                ),
+                                progressColor: _profit >= 0 ? Colors.green : Colors.red,
+                                backgroundColor: Colors.grey.shade200,
+                                circularStrokeCap: CircularStrokeCap.round,
+                              ),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _buildProfitIndicator(true),
+                                  _buildProfitIndicator(false),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () async {
-                            setState(() => _currentlyExpandedId = isExpanded ? null : sale['id']);
-                            if (!isExpanded) await loadSaleItems(sale['id']);
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
+                        const SizedBox(height: 20),
+
+                        // Summary cards
+                        Expanded(
+                          child: SingleChildScrollView(
                             child: Column(
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text("Date: ${sale['date']}",
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: isPaid ? Colors.green[800] : Colors.orange[800],
-                                                fontWeight: FontWeight.bold,
-                                              )),
-                                          Text("ID: ${sale['id']}",
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: isPaid ? Colors.green[800] : Colors.orange[800],
-                                              )),
-                                          Text("৳${sale['total']} (Discount: ৳${sale['discount']})",
-                                              style: TextStyle(
-                                                color: isPaid ? Colors.green[800] : Colors.orange[800],
-                                              )),
-                                          const SizedBox(height: 4),
-                                          _buildPaymentStatusButton(sale),
-                                        ],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.edit, color: isPaid ? Colors.green[800] : Colors.orange[800]),
-                                      onPressed: () => showUpdateDialog(sale),
-                                    ),
-                                  ],
+                                _buildSummaryCard(
+                                  title: 'Total Sales (${DateFormat('MM/dd/yyyy').format(_selectedDate)})',
+                                  amount: _totalSales,
+                                  color: Colors.green,
+                                  icon: Icons.trending_up,
                                 ),
-                                if (isExpanded)
-                                  Column(
-                                    children: [
-                                      const Divider(),
-                                      if (saleItems.isEmpty)
-                                        const Padding(
-                                          padding: EdgeInsets.all(16),
-                                          child: Center(child: CircularProgressIndicator()),
-                                        )
-                                      else
-                                        ...saleItems.map((item) => ListTile(
-                                          title: Text(item['name']),
-                                          subtitle: Text("${item['quantity']} × ৳${item['price']} = ৳${item['total']}"),
-                                          dense: true,
-                                          visualDensity: const VisualDensity(vertical: -4),
-                                        )),
+                                const SizedBox(height: 16),
+                                _buildSummaryCard(
+                                  title: 'Total Costing (${DateFormat('MM/dd/yyyy').format(_selectedDate)})',
+                                  amount: _totalCosting,
+                                  color: Colors.red,
+                                  icon: Icons.trending_down,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildProfitCard(
+                                  profit: _profit,
+                                ),
+                                const SizedBox(height: 30),
+
+                                // Bar chart for the selected day
+                                const Text(
+                                  'Daily Profit/Loss',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Container(
+                                  height: 200,
+                                  padding: const EdgeInsets.all(16.0),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withOpacity(0.2),
+                                        spreadRadius: 2,
+                                        blurRadius: 5,
+                                        offset: const Offset(0, 3),
+                                      ),
                                     ],
                                   ),
+                                  child: BarChart(
+                                    BarChartData(
+                                      alignment: BarChartAlignment.center,
+                                      maxY: _maxY,
+                                      minY: _minY,
+                                      groupsSpace: 20,
+                                      barGroups: _barGroups,
+                                      gridData: const FlGridData(show: false),
+                                      borderData: FlBorderData(show: false),
+                                      titlesData: FlTitlesData(
+                                        show: true,
+                                        bottomTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            getTitlesWidget: (value, meta) {
+                                              return Padding(
+                                                padding: const EdgeInsets.only(top: 8.0),
+                                                child: Text(
+                                                  _xAxisLabels[value.toInt()],
+                                                  style: const TextStyle(fontSize: 12),
+                                                ),
+                                              );
+                                            },
+                                            reservedSize: 30,
+                                          ),
+                                        ),
+                                        leftTitles: AxisTitles(
+                                          sideTitles: SideTitles(
+                                            showTitles: true,
+                                            getTitlesWidget: (value, meta) {
+                                              return Text(
+                                                '\$${value.toInt()}',
+                                                style: const TextStyle(fontSize: 10),
+                                              );
+                                            },
+                                            reservedSize: 40,
+                                          ),
+                                        ),
+                                        rightTitles: const AxisTitles(
+                                          sideTitles: SideTitles(showTitles: false),
+                                        ),
+                                        topTitles: const AxisTitles(
+                                          sideTitles: SideTitles(showTitles: false),
+                                        ),
+                                      ),
+                                      barTouchData: BarTouchData(
+                                        touchTooltipData: BarTouchTooltipData(
+                                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                            return BarTooltipItem(
+                                              '${_xAxisLabels[group.x]}\n${rod.toY >= 0 ? 'Profit' : 'Loss'}: \$${rod.toY.abs().toStringAsFixed(2)}',
+                                              const TextStyle(color: Colors.white),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          );
-        },
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildProfitIndicator(bool isProfit) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: isProfit ? Colors.green : Colors.grey,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          isProfit ? 'Profit' : 'Cancel',
+          style: const TextStyle(fontSize: 14),
+        ),
+      ],
     );
   }
 
   Widget _buildSummaryCard({
-    required BuildContext context,
     required String title,
-    required double value,
+    required double amount,
     required Color color,
     required IconData icon,
   }) {
     return Card(
-      color: color,
-      child: SizedBox(
-        width: 120,
-        // Fixed width
-        height: 60,  // Fixed height
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: color,
+              size: 40,
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '\$${amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                "৳${value.toStringAsFixed(2)}",
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPaymentStatusButton(Map<String, dynamic> sale) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        minimumSize: const Size(0, 24),
-        backgroundColor: sale['paymentStatus'] == 'Paid'
-            ? Colors.grey[300]
-            : Colors.green[100],
-      ),
-      onPressed: () async {
-        final newStatus = sale['paymentStatus'] == 'Paid' ? 'Unpaid' : 'Paid';
-        await DBHelper.updatePaymentStatus(
-          id: sale['id'],
-          paymentStatus: newStatus,
-        );
-        loadSales();
-      },
-      child: Text(
-        sale['paymentStatus'] == 'Paid' ? 'Mark Unpaid' : 'Mark Paid',
-        style: TextStyle(
-          fontSize: 12,
-          color: sale['paymentStatus'] == 'Paid'
-              ? Colors.black
-              : Colors.green[800],
+  Widget _buildProfitCard({required double profit}) {
+    Color profitColor = profit >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+    String profitText = profit >= 0 ? 'Profit' : 'Loss';
+    IconData profitIcon = profit >= 0 ? Icons.attach_money : Icons.money_off;
+
+    return Card(
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Row(
+          children: [
+            Icon(
+              profitIcon,
+              color: profitColor,
+              size: 40,
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Net $profitText',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '\$${profit.abs().toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: profitColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
-  Future<void> _confirmDelete(BuildContext context, String id) async {
-    bool confirm = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Confirm Delete"),
-        content: const Text("Are you sure you want to delete this sale?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    if (confirm) {
-      deleteSale(id);
-      if (_currentlyExpandedId == id) {
-        setState(() => _currentlyExpandedId = null);
-      }
-    }
-  }
-
-
-
 }
