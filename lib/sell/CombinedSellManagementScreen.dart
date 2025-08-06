@@ -1,80 +1,47 @@
 import 'package:flutter/material.dart';
+
 import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
+
 import 'SellScreen.dart';
-
-// A placeholder page to demonstrate navigation.
-class SecondPage extends StatelessWidget {
-  const SecondPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Second Page'),
-      ),
-      body: const Center(
-        child: Text(
-          'This is the second page!',
-          style: TextStyle(fontSize: 24),
-        ),
-      ),
-    );
-  }
-}
 
 class CombinedSellManagementScreen extends StatefulWidget {
   const CombinedSellManagementScreen({super.key});
 
   @override
-  State<CombinedSellManagementScreen> createState() => _CombinedManagementScreenState();
+  State<CombinedSellManagementScreen> createState() =>
+      _CombinedManagementScreenState();
 }
 
-class _CombinedManagementScreenState extends State<CombinedSellManagementScreen> {
+class _CombinedManagementScreenState
+    extends State<CombinedSellManagementScreen> {
   int _selectedIndex = 0;
-  final TextEditingController _searchController = TextEditingController();
 
-  final List<Widget> _screens = [
-    const SellScreen(),
-    const SellRecordScreen()
-  ];
+  final List<Widget> _screens = [const SellScreen(), const SellRecordScreen()];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // Header with tabs and search
+// Header with tabs and search
           SliverToBoxAdapter(
             child: Column(
               children: [
-                // Segmented Button - Full Width
+// Segmented Button - Full Width
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: SizedBox(
                     width: double.infinity,
                     child: SegmentedButton<int>(
-                      style: const ButtonStyle(
+                      style: ButtonStyle(
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       segments: const [
-                        ButtonSegment(
-                          value: 0,
-                          label: Text('Order'),
-                          icon: Icon(Icons.category),
-                        ),
-                        ButtonSegment(
-                          value: 1,
-                          label: Text('View Order'),
-                          icon: Icon(Icons.restaurant),
-                        ),
-                      ],
+                        ButtonSegment(value: 0, label: Text('Order'), icon: Icon(Icons.category),),
+                        ButtonSegment(value: 1, label: Text('View Order'), icon: Icon(Icons.restaurant),),],
                       selected: {_selectedIndex},
                       onSelectionChanged: (newSelection) {
-                        // MODIFIED: Navigate to the SecondPage when either tab is selected.
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SellRecordScreen()),
-                        );
                         setState(() {
                           _selectedIndex = newSelection.first;
                         });
@@ -82,12 +49,10 @@ class _CombinedManagementScreenState extends State<CombinedSellManagementScreen>
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 16),
               ],
             ),
           ),
-          // Screen Content
+// Screen Content
           SliverFillRemaining(
             hasScrollBody: true,
             child: IndexedStack(
@@ -98,11 +63,5 @@ class _CombinedManagementScreenState extends State<CombinedSellManagementScreen>
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 }

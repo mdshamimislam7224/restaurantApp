@@ -44,14 +44,12 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
       saleItems = result;
     });
   }
-
   void deleteSale(String id) async {
     final db = await DBHelper.db;
     await db.delete('sales_items', where: 'saleId = ?', whereArgs: [id]);
     await db.delete('sales', where: 'id = ?', whereArgs: [id]);
     loadSales();
   }
-
   void showUpdateDialog(Map<String, dynamic> sale) async {
     final discountController = TextEditingController(text: sale['discount'].toString());
     String selectedMethod = sale['paymentMethod'] ?? 'Cash';
@@ -71,7 +69,6 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
             double subtotal = 0;
             double discount = 0;
             double grandTotal = 0;
-
             void recalculateTotals() {
               subtotal = existingItems.fold(0.0, (sum, item) => sum + (item['quantity'] * item['price']));
               discount = double.tryParse(discountController.text) ?? 0.0;
@@ -246,7 +243,7 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: selectedMethod,
-                        items: ["Cash", "bKash", "Card", "Nagad"]
+                        items: ["Cash", "bKash", "Card", "Nagad", "Rocket", "Bank Transfer","Other"]
                             .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                             .toList(),
                         onChanged: (val) => setStateDialog(() => selectedMethod = val!),
@@ -328,38 +325,21 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
     double paidTotal = sales.where((s) => s['paymentStatus'] == 'Paid').fold(0, (sum, sale) => sum + (sale['total'] as double));
     double unpaidTotal = sales.where((s) => s['paymentStatus'] == 'Unpaid').fold(0, (sum, sale) => sum + (sale['total'] as double));
     double grossTotal = sales.fold(0, (sum, sale) => sum + (sale['total'] as double) + (sale['discount'] as double));
+    double onlineTotal = sales.where((s) => ['bKash', 'Card', 'Nagad', 'Rocket', 'Bank Transfer'].contains(s['paymentMethod'])).fold(0, (sum, sale) => sum + (sale['total'] as double));
+
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Sell Records"),
-        elevation: 0,
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Refreshing data..."),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-              await loadSales();
-            },
-          ),
-        ],
-      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildSummaryGrid(
               context: context,
-              totalSales: totalSales,
+              grossTotal: grossTotal,
               totalDiscount: totalDiscount,
               paidTotal: paidTotal,
               unpaidTotal: unpaidTotal,
-              grossTotal: grossTotal,
+              onlineTotal: onlineTotal,
             ),
             const SizedBox(height: 16),
             sales.isEmpty
@@ -424,7 +404,7 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
                   child: Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     color: cardColor,
-                    elevation: 2,
+                    elevation: 4,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -505,14 +485,18 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
                                           Expanded( // FIX: Wrapped this text in Expanded
                                             child: Text(
                                               "${item['name']} x ${item['quantity']}",
-                                              style: const TextStyle(fontSize: 14),
+                                          //Colors.green.shade50 : Colors.orange.shade50;
+                                              style: const TextStyle(fontSize: 14,color: Colors.blue),
+
                                               overflow: TextOverflow.visible,
+                                              softWrap: true,
                                               maxLines: null,
+                                              textAlign: TextAlign.start,
                                             ),
                                           ),
                                           Text(
                                             "৳${item['total']}",
-                                            style: const TextStyle(fontWeight: FontWeight.bold),
+                                            style: const TextStyle(fontWeight: FontWeight.bold,color: Colors.blue),
                                           ),
                                         ],
                                       ),
@@ -521,7 +505,7 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
                                     "Date: ${sale['date']}",
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: textColor,
+                                      color:  Colors.blue,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
@@ -544,27 +528,61 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   // **MODIFIED METHOD**
   Widget _buildSummaryGrid({
     required BuildContext context,
-    required double totalSales,
+    required double grossTotal,
     required double totalDiscount,
     required double paidTotal,
     required double unpaidTotal,
-    required double grossTotal,
+    required double onlineTotal,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: GridView.count(
         shrinkWrap: true,
-        crossAxisCount: 2,
+        crossAxisCount: 3,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
         physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 2.2,
+        childAspectRatio: 1.1,
         children: [
-          _buildSummaryCard("Total Sales", totalSales, Theme.of(context).primaryColor, Colors.white),
-          _buildSummaryCard("Total Discount", totalDiscount, Colors.red, Colors.red.shade50),
+          _buildSummaryCard("Total Sales", grossTotal, Theme.of(context).primaryColor, Colors.white),
           _buildSummaryCard("Paid Total", paidTotal, Colors.green, Colors.green.shade50),
           _buildSummaryCard("Unpaid Total", unpaidTotal, Colors.orange, Colors.orange.shade50),
-          _buildSummaryCard("Gross Total", grossTotal, Colors.blue, Colors.blue.shade50),
+          _buildSummaryCard("Total Discount", totalDiscount, Colors.red, Colors.red.shade50),
+          _buildSummaryCard("Online Total", onlineTotal, Colors.blue, Colors.blue.shade50),
+          // Removed the Expanded widget here
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FittedBox(
+                    child: Text(
+                      "Refresh",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).iconTheme.color,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () async {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Refreshing data..."),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                      await loadSales();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -602,8 +620,8 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   Widget _buildPaymentStatusButton(Map<String, dynamic> sale) {
     final isPaid = sale['paymentStatus'] == 'Paid';
     final buttonText = isPaid ? 'Mark Unpaid' : 'Mark Paid';
-    final buttonColor = isPaid ? Colors.grey[300] : Colors.green[100];
-    final textColor = isPaid ? Colors.black : Colors.green[800];
+    final buttonColor = isPaid ? Colors.orange.shade50 : Colors.green[100];
+    final textColor = isPaid ? Colors.orange : Colors.green[800];
 
     return ElevatedButton(
       style: ElevatedButton.styleFrom(

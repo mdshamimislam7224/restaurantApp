@@ -8,6 +8,7 @@ import '../DashboardScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
 import '../Staff/StaffListScreen.dart';
+import '../calCulateCash/CashCalculationScreen.dart';
 
 class Navigation_Class extends StatefulWidget {
   @override
@@ -18,14 +19,14 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   int _selectedDrawerIndex = 0;
 
   final List<Widget> _pages = [
-    DashboardScreen(),
+    CashCalculationScreen(),
     CombinedSellManagementScreen(),
     CostingRecordScreen(),
     StaffListScreen(),
     SalaryRecordScreen(),
+    DashboardScreen(),
     combinedAddFoodListManagementScreen(),
     MenuItemManagerScreen(),
-    SellRecordScreen(),
   ];
   final List<String> _pageTitles = [
     "Dashboard",
