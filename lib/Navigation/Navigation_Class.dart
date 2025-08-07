@@ -45,10 +45,15 @@ class _Navigation_ClassState extends State<Navigation_Class> {
 
 
   final List<Color> _appBarColors = [
-    Color(0x341771).withOpacity(0.5),
-    Color(0x4E0BDC).withOpacity(0.5),
     Color(0x341771).withOpacity(1.0),
-    Color(0x341771),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
     Colors.teal,
 
   ];
