@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../localDB/DBHelper.dart';
 
 class CostingRecordScreen extends StatefulWidget {
@@ -12,6 +13,8 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
   List<Map<String, dynamic>> allCostingRecords = [];
   List<Map<String, dynamic>> filteredCostingRecords = [];
   String _selectedFilterType = "All";
+  String? _idDate;
+
 
   @override
   void initState() {
@@ -363,148 +366,166 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
     );
   }
 
-    void _showAddCostDialog() {
-      final TextEditingController descriptionController = TextEditingController();
-      final TextEditingController amountController = TextEditingController();
-      String selectedType = "Ingredients";
-      String selectedStatus = "Pending";
-      String selectedDate = DateTime.now().toIso8601String().split("T").first;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          return WillPopScope(
-            onWillPop: () async => false,
-            child: Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        "Add New Costing",
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      DropdownButtonFormField<String>(
-                        value: selectedType,
-                        items: [
-                          "Ingredients",
-                          "Meal Bill",
-                          "Rent",
-                          "Staff Salary",
-                          "Bill",
-                          "Maintenance",
-                          "Others"
-                        ]
-                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) selectedType = val;
-                        },
-                        decoration: const InputDecoration(
-                          labelText: "Type",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: "Description",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: amountController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Amount",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: "Date",
-                          border: const OutlineInputBorder(),
-                          suffixIcon: const Icon(Icons.calendar_today),
-                        ),
-                        controller: TextEditingController(text: selectedDate),
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2023),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null) {
-                            selectedDate = picked.toIso8601String().split("T").first;
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: selectedStatus,
-                        items: ["Pending", "Paid"]
-                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) selectedStatus = val;
-                        },
-                        decoration: const InputDecoration(
-                          labelText: "Status",
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text("Cancel"),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                final description = descriptionController.text.trim();
-                                final amount = double.tryParse(amountController.text) ?? 0.0;
+  void _showAddCostDialog() {
+    final TextEditingController descriptionController = TextEditingController();
+    final TextEditingController amountController = TextEditingController();
 
-                                if (description.isNotEmpty && amount > 0) {
-                                  await DBHelper.insertCostingRecord(
-                                    date: selectedDate,
-                                    type: selectedType,
-                                    description: description,
-                                    amount: amount,
-                                    paymentStatus: selectedStatus,
-                                  );
-                                  Navigator.pop(context);
-                                  loadCostingRecords();
-                                }
-                              },
-                              child: const Text("Add"),
-                            ),
-                          ),
-                        ],
+    String selectedType = "Ingredients";
+    String selectedStatus = "Pending";
+    String selectedDate = DateTime.now().toIso8601String().split("T").first;
+    _idDate = DateFormat('ddMMMyyyy').format(DateTime.now()); // Initialize _idDate
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Add New Costing",
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 20),
+                    DropdownButtonFormField<String>(
+                      value: selectedType,
+                      items: [
+                        "Ingredients",
+                        "Meal Bill",
+                        "Rent",
+                        "Staff Salary",
+                        "Bill",
+                        "Maintenance",
+                        "Others"
+                      ]
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) selectedType = val;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: "Type",
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: "Description",
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: "Amount",
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: "Date",
+                        border: const OutlineInputBorder(),
+                        suffixIcon: const Icon(Icons.calendar_today),
+                      ),
+                      controller: TextEditingController(text: selectedDate),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2023),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          selectedDate = picked.toIso8601String().split("T").first;
+                          _idDate = DateFormat('ddMMMyyyy').format(picked);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedStatus,
+                      items: ["Pending", "Paid"]
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) selectedStatus = val;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: "Status",
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text("Cancel"),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final description = descriptionController.text.trim();
+                              final amount = double.tryParse(amountController.text) ?? 0.0;
+                              final costingID = generateSaleIdFromDate(_idDate!);
+
+                              if (description.isNotEmpty && amount > 0) {
+                                await DBHelper.insertCostingRecord(
+                                  id: costingID,
+                                  date: selectedDate,
+                                  type: selectedType,
+                                  description: description,
+                                  amount: amount,
+                                  paymentStatus: selectedStatus,
+                                );
+                                Navigator.pop(context);
+                                loadCostingRecords();
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please enter valid description and amount'),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text("Add"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
-          );
-        },
-      );
-    }
+          ),
+        );
+      },
+    );
+  }
+
+  String generateSaleIdFromDate(String date) {
+    final now = DateTime.now();
+    final timePart = "${now.hour}${now.minute}${now.second}${now.millisecond}";
+    return "${date}_$timePart";
+  }
   }

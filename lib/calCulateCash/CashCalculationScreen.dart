@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+import 'package:restaurant_inventory/alertDialog/customDialog.dart';
 import 'package:restaurant_inventory/api/apiClass.dart';
+import '../alertDialog/customDialog.dart';
 import '../localDB/DBHelper.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -21,8 +26,7 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
   double _totalCosting = 0.0;
   double _profit = 0.0;
   double _profitPercentage = 0.0;
-  String _formattedDate = '';
-
+  late customDialog customdialog;
   List<BarChartGroupData> _barGroups = [];
   double _minY = 0;
   double _maxY = 0;
@@ -37,6 +41,7 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
   void initState() {
     super.initState();
     _loadAllDataAndCalculateMetrics(_selectedDate);
+    customdialog= customDialog(context);
   }
 
   Future<void> _loadAllDataAndCalculateMetrics(DateTime date) async {
@@ -228,7 +233,7 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
                     ),
 
                     ElevatedButton(
-                      onPressed: () => syncSalesToGoogleSheets(_selectedDate),
+                      onPressed: () => syncDataToGoogleSheets(_selectedDate),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -466,17 +471,14 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
       ),
     );
   }
-  static Future<void> syncSalesToGoogleSheets(DateTime selectedDate) async {
+  Future<void> syncDataToGoogleSheets(DateTime selectedDate) async {
     try {
-      // Format the selected date to match your database format
       final dateFormat = DateFormat('yyyy-MM-dd');
       final selectedDateString = dateFormat.format(selectedDate);
 
-      // Get all sales with their items
       final allSales = await DBHelper.getAllSalesWithItems();
       final allCosting = await DBHelper.getCostingRecords();
 
-      // Filter sales for the selected date
       final filteredSales = allSales.where((sale) {
         try {
           final saleDate = DateFormat('MM/dd/yyyy').parse(sale['date']);
@@ -487,12 +489,11 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
         }
       }).toList();
 
-      // Filter costing records for the selected date
       final filteredCosting = allCosting.where((record) {
         return record['date'] == selectedDateString;
       }).toList();
-
-      // Prepare data for Google Sheets
+      print("All Costing");
+      print(allCosting);
       final salesData = filteredSales.map((sale) {
         return {
           'saleRecord': {
@@ -516,31 +517,29 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
         };
       }).toList();
 
-      // Prepare daily summary data for just this date
       final dailySummaries = _prepareDailySummaries(filteredSales, filteredCosting);
 
-      // Send to Google Sheets
+
       await _sendSalesDataToGoogleSheets({
         'salesData': salesData,
         'dailySummaries': dailySummaries,
-        'selectedDate': selectedDateString,
+        'costingRecords': filteredCosting
       });
+
     } catch (e) {
-      print('Error syncing sales to Google Sheets: $e');
+      print('Error syncing data: $e');
       rethrow;
     }
   }
-
-  static List<Map<String, dynamic>> _prepareDailySummaries(
+  List<Map<String, dynamic>> _prepareDailySummaries(
       List<Map<String, dynamic>> sales,
       List<Map<String, dynamic>> costingRecords
       ) {
     final dailySummaries = <Map<String, dynamic>>[];
     final dateSalesMap = <String, double>{};
     final dateCostingMap = <String, double>{};
-    final now = DateTime.now();
     final formatter = DateFormat('ddMMMyyyy');
-    final dailySellId = formatter.format(now);
+    final dailySellId = formatter.format(_selectedDate);
 
     // Calculate total sales per day
     for (var sale in sales) {
@@ -567,7 +566,7 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
       final salesAmount = dateSalesMap[date] ?? 0;
       final costingAmount = dateCostingMap[date] ?? 0;
       final netAmount = salesAmount - costingAmount;
-
+      print('dailySellId: $dailySellId date: $date salesAmount: $salesAmount costingAmount: $costingAmount netAmount: $netAmount',);
       dailySummaries.add({
         'id': dailySellId,
         'date': date,
@@ -581,18 +580,83 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
     return dailySummaries;
   }
 
-  static Future<void> _sendSalesDataToGoogleSheets(Map<String, dynamic> data) async {
-    final response = await http.post(
-      Uri.parse('YOUR_GOOGLE_APPS_SCRIPT_URL'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'action': 'syncSalesData',
-        'data': data,
-      }),
-    );
 
-    if (response.statusCode != 200) {
-      throw Exception('Failed to sync sales data: ${response.body}');
+   Future<void> _sendSalesDataToGoogleSheets(Map<String, dynamic> data) async {
+    try {
+
+      customdialog.showLoading('Syncing Data...', subtitle: 'Please wait');
+      // Create HTTP client
+      final client = http.Client();
+
+      try {
+        // Initial POST request
+        http.Response response = await client.post(
+          Uri.parse(apiClass.baseUrlSell),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'action': 'syncLocalData',
+            'data': data,
+          }),
+        ).timeout(const Duration(seconds: 30));
+
+        print('Initial Response Status Code: ${response.statusCode}');
+        print('Initial Response Body: ${response.body}');
+
+        // Handle redirect (302, 301, etc.)
+        if (response.statusCode == HttpStatus.found ||
+            response.statusCode == HttpStatus.movedPermanently ||
+            response.statusCode == HttpStatus.seeOther ||
+            response.statusCode == HttpStatus.temporaryRedirect) {
+
+          final String? newLocation = response.headers['location'];
+          if (newLocation != null) {
+            print('Redirecting to: $newLocation');
+
+            // Follow the redirect with a GET request
+            response = await client.get(
+              Uri.parse(newLocation),
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            ).timeout(const Duration(seconds: 30));
+
+            print('Redirected Response Status Code: ${response.statusCode}');
+            print('Redirected Response Body: ${response.body}');
+          }
+        }
+
+        // Process the final response
+        if (response.statusCode == 200) {
+          final responseBody = jsonDecode(response.body);
+          if (responseBody['status'] == 'success') {
+            customdialog.dismiss();
+            print('Data synced successfully');
+          } else {
+            customdialog.dismiss();
+            throw Exception('Server error: ${responseBody['message']}');
+          }
+        } else {
+          customdialog.dismiss();
+          throw Exception('Failed to sync sales data: ${response.statusCode} - ${response.body}');
+        }
+      } on TimeoutException {
+        customdialog.showError('sync data failed', 'Request timed out'  );
+        throw Exception('Request timed out');
+      } catch (e) {
+        customdialog.dismiss();
+        rethrow;
+      } finally {
+        customdialog.dismiss();
+        client.close();
+      }
+    } on http.ClientException catch (e) {
+      customdialog.showError("sync data failed","Network error: ${e.message}");
+      throw Exception('Network error: ${e.message}');
+    } catch (e) {
+      customdialog.dismiss();
+      throw Exception('Failed to sync data: $e');
     }
   }
 }

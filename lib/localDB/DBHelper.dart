@@ -53,7 +53,7 @@ class DBHelper {
       ''');
         await db.execute('''
         CREATE TABLE costing_records(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id TEXT PRIMARY KEY,
           date TEXT,
           type TEXT,
           description TEXT,
@@ -244,6 +244,7 @@ class DBHelper {
   }
   // Costing Db
   static Future<void> insertCostingRecord({
+    required String id,
     required String date,
     required String type,
     required String description,
@@ -252,6 +253,7 @@ class DBHelper {
   }) async {
     final dbClient = await db;
     await dbClient.insert('costing_records', {
+      'id': id,
       'date': date,
       'type': type,
       'description': description,
