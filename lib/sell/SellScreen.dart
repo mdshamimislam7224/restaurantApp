@@ -32,6 +32,11 @@ class _SellScreenState extends State<SellScreen> {
   void initState() {
     super.initState();
     loadCategories();
+    // Initialize with current date
+    final now = DateTime.now();
+    _dateController.text = DateFormat('MM/dd/yyyy').format(now);
+    _idDate = DateFormat('ddMMMyyyy').format(now);
+    selectedDate = now; // Update selectedDate if you're using it elsewhere
   }
 
   Future<void> loadCategories() async {
@@ -77,7 +82,7 @@ class _SellScreenState extends State<SellScreen> {
               'key': DateTime.now().millisecondsSinceEpoch.toString(), // Unique key for Dismissible
             });
             quantity = 1;
-            selectedMenuItem = null;
+
           });
         }
       }
@@ -117,8 +122,9 @@ class _SellScreenState extends State<SellScreen> {
         _discountController.text = "0";
         paymentMethod = "Cash";
         paymentStatus = "Unpaid";
-        _dateController.text = "";
         selectedCategory = null;
+        selectedMenuItem = null;
+        selectedMenuItem = null;
         menuItems.clear();
       });
     }
@@ -136,12 +142,6 @@ class _SellScreenState extends State<SellScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("New Sale"),
-        centerTitle: true,
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
@@ -167,7 +167,7 @@ class _SellScreenState extends State<SellScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        "Sale Information",
+                        "Add Sale Information",
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: theme.colorScheme.primary,
@@ -193,12 +193,13 @@ class _SellScreenState extends State<SellScreen> {
                         onTap: () async {
                           DateTime? pickedDate = await showDatePicker(
                             context: context,
-                            initialDate: DateTime.now(),
+                            initialDate: selectedDate, // Use the already selected date or current date
                             firstDate: DateTime(2000),
                             lastDate: DateTime(2100),
                           );
                           if (pickedDate != null) {
                             setState(() {
+                              selectedDate = pickedDate;
                               _dateController.text = DateFormat('MM/dd/yyyy').format(pickedDate);
                               _idDate = DateFormat('ddMMMyyyy').format(pickedDate);
                             });
@@ -365,7 +366,6 @@ class _SellScreenState extends State<SellScreen> {
 
                 const SizedBox(height: 16),
 
-                // Selected Items List
                 // Selected Items List
                 if (selectedItems.isNotEmpty) ...[
                   Container(

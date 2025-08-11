@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Staff/SalaryRecordScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
-import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
 import '../DashboardScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
