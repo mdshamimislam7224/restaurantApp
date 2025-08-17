@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -53,7 +54,7 @@ class DBHelper {
       ''');
         await db.execute('''
         CREATE TABLE costing_records(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id TEXT PRIMARY KEY,
           date TEXT,
           type TEXT,
           description TEXT,
@@ -89,8 +90,11 @@ class DBHelper {
           salary TEXT
         )
       ''');
-
-
+        await db.execute('''
+        CREATE TABLE localCalculateCash_cache (
+          id TEXT PRIMARY KEY
+        )
+      ''');
       },
     );
   }
@@ -122,12 +126,12 @@ class DBHelper {
     return salesWithItems;
   }
 
-
   static Future<void> insertMenuItems(List<Map<String, dynamic>> items) async {
     final dbClient = await db;
     final batch = dbClient.batch();
     for (var item in items) {
-      batch.insert('menu_items', item, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert('menu_items', item,
+          conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
   }
@@ -172,7 +176,6 @@ class DBHelper {
       }
     });
   }
-
 
   static Future<List<Map<String, dynamic>>> getSales() async {
     final dbClient = await db;
@@ -225,6 +228,7 @@ class DBHelper {
       }
     });
   }
+
   static Future<void> updatePaymentStatus({
     required String id,
     required String paymentStatus,
@@ -242,8 +246,10 @@ class DBHelper {
     final dbClient = await db;
     await dbClient.delete('menu_items');
   }
+
   // Costing Db
   static Future<void> insertCostingRecord({
+    required String id,
     required String date,
     required String type,
     required String description,
@@ -252,6 +258,7 @@ class DBHelper {
   }) async {
     final dbClient = await db;
     await dbClient.insert('costing_records', {
+      'id': id,
       'date': date,
       'type': type,
       'description': description,
@@ -259,14 +266,17 @@ class DBHelper {
       'paymentStatus': paymentStatus,
     });
   }
+
   static Future<List<Map<String, dynamic>>> getCostingRecords() async {
     final dbClient = await db;
     return await dbClient.query('costing_records', orderBy: 'date DESC');
   }
+
   static Future<void> deleteCostingRecord(int id) async {
     final dbClient = await db;
     await dbClient.delete('costing_records', where: 'id = ?', whereArgs: [id]);
   }
+
   static Future<void> updateCostingRecord({
     required int id,
     required String date,
@@ -290,7 +300,6 @@ class DBHelper {
     );
   }
 
-
   static Future<void> updateCostingPaymentStatus({
     required int id,
     required String paymentStatus,
@@ -303,6 +312,7 @@ class DBHelper {
       whereArgs: [id],
     );
   }
+
   //Staff Sign Up (Add Staff)
   static Future<bool> insertStaff(Map<String, dynamic> staffData) async {
     try {
@@ -336,22 +346,31 @@ class DBHelper {
     }
   }
 
-
   static Future<List<Map<String, dynamic>>> getAllStaff() async {
     final db = await DBHelper.db;
-    final List<Map<String, dynamic>> allStaff = [];
-
     // First get all basic info without images
-    final basicInfoList = await db.query(
-        'staff_signup',
-        columns: ['id', 'name', 'nid', 'phone', 'position', 'present_address',
-          'permanent_address', 'salary', 'staff_id', 'join_date', 'email',
-          'guardian_info', 'info']
-    );
+    final basicInfoList = await db.query('staff_signup', columns: [
+      'id',
+      'name',
+      'nid',
+      'phone',
+      'position',
+      'present_address',
+      'permanent_address',
+      'salary',
+      'staff_id',
+      'join_date',
+      'email',
+      'guardian_info',
+      'info'
+    ]);
     return basicInfoList;
-    }
+  }
 
-
+  static Future<void> clearAllStaff() async {
+    final dbClient = await db;
+    await dbClient.delete('staff_signup');
+  }
 
   static Future<int> updateStaff(int id, Map<String, dynamic> newData) async {
     final db = await DBHelper.db;
@@ -386,12 +405,31 @@ class DBHelper {
     await db.delete('staff_signup', where: 'id = ?', whereArgs: [id]);
   }
 
-
   static Future<List<Map<String, dynamic>>> getAllCachedStaff() async {
     final dbClient = await db;
     return await dbClient.query('staff_basic_cache', orderBy: 'staff_id ASC');
   }
 
+  static Future<void> clearAllTables() async {
+    final dbClient = await db;
+    try {
+      await dbClient.transaction((txn) async {
+        // List all your tables here
+        const tables = [
+          'sales',
+          'sales_items',
+          'costing_records',
+          'staff_basic_cache',
+        ];
 
-
+        // Delete all data from each table
+        for (final table in tables) {
+          await txn.delete(table);
+        }
+      });
+    } catch (e) {
+      debugPrint('Error clearing tables: $e');
+      rethrow;
+    }
+  }
 }

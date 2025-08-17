@@ -333,14 +333,7 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildSummaryGrid(
-              context: context,
-              grossTotal: grossTotal,
-              totalDiscount: totalDiscount,
-              paidTotal: paidTotal,
-              unpaidTotal: unpaidTotal,
-              onlineTotal: onlineTotal,
-            ),
+            _buildSummaryGrid(context: context, grossTotal: grossTotal, totalDiscount: totalDiscount, paidTotal: paidTotal, unpaidTotal: unpaidTotal, onlineTotal: onlineTotal,),
             const SizedBox(height: 16),
             sales.isEmpty
                 ? const Center(child: Text("No records found."))
@@ -526,14 +519,7 @@ class _SellRecordScreenState extends State<SellRecordScreen> {
   }
 
   // **MODIFIED METHOD**
-  Widget _buildSummaryGrid({
-    required BuildContext context,
-    required double grossTotal,
-    required double totalDiscount,
-    required double paidTotal,
-    required double unpaidTotal,
-    required double onlineTotal,
-  }) {
+  Widget _buildSummaryGrid({required BuildContext context, required double grossTotal, required double totalDiscount, required double paidTotal, required double unpaidTotal, required double onlineTotal,}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: GridView.count(

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Staff/SalaryRecordScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
-import 'package:restaurant_inventory/sell/SellRecordScreen.dart';
 import '../DashboardScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
@@ -45,10 +44,15 @@ class _Navigation_ClassState extends State<Navigation_Class> {
 
 
   final List<Color> _appBarColors = [
-    Color(0x341771).withOpacity(0.5),
-    Color(0x4E0BDC).withOpacity(0.5),
     Color(0x341771).withOpacity(1.0),
-    Color(0x341771),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
     Colors.teal,
 
   ];
@@ -84,7 +88,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundImage: AssetImage('assets/images/appicon.png'),
+                  backgroundImage: AssetImage('assets/freshbite_icon.png'),
                 ),
                 SizedBox(height: 10),
                 Text(
