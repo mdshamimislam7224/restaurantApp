@@ -88,7 +88,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundImage: AssetImage('assets/images/appicon.png'),
+                  backgroundImage: AssetImage('assets/freshbite_icon.png'),
                 ),
                 SizedBox(height: 10),
                 Text(
