@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Staff/SalaryRecordScreen.dart';
+import 'package:restaurant_inventory/admin/SalesDashboardScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
 import '../DashboardScreen.dart';
@@ -174,6 +175,109 @@ class _Navigation_ClassState extends State<Navigation_Class> {
               title: Text('Add Food List'),
               onTap: () => _onSelectItem(5),
             ),
+            ListTile(
+              leading: Icon(Icons.person_add),
+              title: Text('Admin Login'),
+              onTap: () async {
+                final usernameController = TextEditingController();
+                final passwordController = TextEditingController();
+                // Use a variable to hold the message and its color
+                String statusMessage = '';
+                Color statusColor = Colors.transparent;
+                final loggedUser = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) {
+                    // StatefulBuilder lets you rebuild a part of the UI by calling setState
+                    return StatefulBuilder(
+                      builder: (context, setState) {
+                        return AlertDialog(
+                          title: const Text('Login'),
+                          content: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextFormField(
+                                  controller: usernameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Username',
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: passwordController,
+                                  obscureText: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Password',
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                // This Text widget's content and color will be updated
+                                Text(
+                                  statusMessage,
+                                  style: TextStyle(color: statusColor),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              child: const Text('Cancel'),
+                              onPressed: () => Navigator.pop(ctx, false),
+                            ),
+                            TextButton(
+                              child: const Text('Login'),
+                              onPressed: () {
+                                final username = usernameController.text;
+                                final password = passwordController.text;
+
+                                // Call setState to rebuild the UI with the new message
+                                if (username.isNotEmpty && password.isNotEmpty) {
+                                  String usernames ='freshbite';
+                                  String passwords = 'adminshamim';
+                                  if (username == usernames && password == passwords) {
+                                    setState(() {
+                                      statusMessage = 'You are logged in with username: $username and password: $password';
+                                      statusColor = Colors.green;
+                                      // You can add a small delay before popping the dialog
+
+                                      Future.delayed(const Duration(seconds: 2), () {
+                                        Navigator.pop(ctx, true);
+                                      });
+                                    });
+                                  }
+                                  else {
+                                    setState(() {
+                                      statusMessage = 'Invalid username or password';
+                                      statusColor = Colors.red;
+                                    });
+                                  }
+
+
+                                } else {
+                                  setState(() {
+                                    statusMessage = 'Please enter both username and password';
+                                    statusColor = Colors.red;
+                                  });
+                                }
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                );
+
+                if (loggedUser == true) {
+                  print('Login successful!');
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => SalesDashboardScreen()) );
+                } else {
+                  print('Login failed or canceled.');
+                  print('Login failed or canceled.');
+                }
+              },
+            ),
 
           ],
         ),
@@ -182,8 +286,6 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       body: _pages[_selectedDrawerIndex],
     );
   }
-
-
 
 
 

@@ -522,7 +522,6 @@ class _SalaryRecordScreenState extends State<SalaryRecordScreen> {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

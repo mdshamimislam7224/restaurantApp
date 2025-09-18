@@ -419,7 +419,7 @@ class DBHelper {
           'sales',
           'sales_items',
           'costing_records',
-          'staff_basic_cache',
+          // 'staff_basic_cache',
         ];
 
         // Delete all data from each table

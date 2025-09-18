@@ -216,8 +216,6 @@ class _StaffListScreenState extends State<StaffListScreen> {
                 return;
               }
               final dialog = customDialog(context);
-
-
               // --- Start: Prepare Data ---
               final List<Map<String, String>> formattedProfileImages = [];
               final List<Map<String, String>> formattedImages = [];
