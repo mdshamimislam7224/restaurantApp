@@ -34,6 +34,15 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
     {'label': 'Profit', 'value': 0, 'color': Colors.green},
     {'label': 'Loss', 'value': 0, 'color': Colors.red},
   ];
+  final Map<String, double> paymentMethodTotals = {
+    "Cash": 0.0,
+    "bKash": 0.0,
+    "Card": 0.0,
+    "Nagad": 0.0,
+    "Rocket": 0.0,
+    "Bank Transfer": 0.0,
+    "Other": 0.0,
+  };
 
   @override
   void initState() {
@@ -566,8 +575,23 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
           };
         }).toList();
 
-        final dailySummaries = _prepareDailySummaries(filteredSales, filteredCosting);
 
+// Loop through your filtered sales data
+        for (var sale in filteredSales) {
+          final method = sale['paymentMethod'];
+          final amount = sale['total'] as double;
+
+          // Add the sale amount to the correct payment method total
+          if (paymentMethodTotals.containsKey(method)) {
+            paymentMethodTotals[method] = (paymentMethodTotals[method] ?? 0.0) + amount;
+          } else {
+            // Handle any payment methods that aren't in your initial list
+            paymentMethodTotals['Other'] = (paymentMethodTotals['Other'] ?? 0.0) + amount;
+          }
+        }
+        final dailySummaries = _prepareDailySummaries(filteredSales, filteredCosting,paymentMethodTotals);
+
+        print('Daily Summaries: $salesData');
         await _sendSalesDataToGoogleSheets({
           'salesData': salesData,
           'dailySummaries': dailySummaries,
@@ -582,7 +606,7 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
 
   List<Map<String, dynamic>> _prepareDailySummaries(
       List<Map<String, dynamic>> sales,
-      List<Map<String, dynamic>> costingRecords) {
+      List<Map<String, dynamic>> costingRecords,Map<String, double> paymentMethodTotals) {
     final dailySummaries = <Map<String, dynamic>>[];
     final dateSalesMap = <String, double>{};
     final dateCostingMap = <String, double>{};
@@ -622,9 +646,15 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
         'costingAmount': costingAmount,
         'netAmount': netAmount,
         'lossAmount': netAmount < 0 ? netAmount.abs() : 0,
+        'cash': paymentMethodTotals['Cash'] ?? 0,
+        'bKash': paymentMethodTotals['bKash'] ?? 0,
+        'card': paymentMethodTotals['Card'] ?? 0,
+        'nagad': paymentMethodTotals['Nagad'] ?? 0,
+        'rocket': paymentMethodTotals['Rocket'] ?? 0,
+        'bankTransfer': paymentMethodTotals['Bank Transfer'] ?? 0,
+        'other': paymentMethodTotals['Other'] ?? 0,
       });
     }
-
     return dailySummaries;
   }
 
