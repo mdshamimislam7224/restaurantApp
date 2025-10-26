@@ -12,7 +12,6 @@ class DailyDetailsScreen extends StatefulWidget {
   @override
   State<DailyDetailsScreen> createState() => _DailyDetailsScreenState();
 }
-
 class _DailyDetailsScreenState extends State<DailyDetailsScreen> {
   List<dynamic> _salesItems = [];
   List<dynamic> _costingRecords = [];
@@ -66,7 +65,6 @@ class _DailyDetailsScreenState extends State<DailyDetailsScreen> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -110,7 +108,6 @@ class _DailyDetailsScreenState extends State<DailyDetailsScreen> {
       ),
     );
   }
-
   Widget _buildToggleButton(String title) {
     final isSelected = _selectedView == title;
     return InkWell(
@@ -184,7 +181,6 @@ class _DailyDetailsScreenState extends State<DailyDetailsScreen> {
       },
     );
   }
-
   Widget _buildCostingRecordsList() {
     if (_costingRecords.isEmpty) {
       return const Center(

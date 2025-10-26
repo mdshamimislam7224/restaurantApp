@@ -20,11 +20,12 @@ class _Navigation_ClassState extends State<Navigation_Class> {
 
   final List<Widget> _pages = [
     CashCalculationScreen(),
-    SalesDashboardScreen(),
     CombinedSellManagementScreen(),
     CostingRecordScreen(),
     StaffListScreen(),
     SalaryRecordScreen(),
+    combinedAddFoodListManagementScreen(),
+    SalesDashboardScreen(),
     DashboardScreen(),
     combinedAddFoodListManagementScreen(),
     MenuItemManagerScreen(),
@@ -36,14 +37,12 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     "Staff Management",
     "Salary Record",
     'Food List Management',
-    'Add Employee',
     'Staff Payment',
     "Show All Costing",
     "Cash Calculate",
     'Load Data From Online Database',
 
   ];
-
 
   final List<Color> _appBarColors = [
     Color(0x341771).withOpacity(1.0),
@@ -56,9 +55,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     Color(0x341771).withOpacity(1.0),
     Color(0x341771).withOpacity(1.0),
     Colors.teal,
-
   ];
-
   void _onSelectItem(int index) {
     setState(() {
       _selectedDrawerIndex = index;

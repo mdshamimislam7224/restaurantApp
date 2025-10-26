@@ -47,6 +47,7 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
   }
 
   Future<void> _fetchData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -58,7 +59,7 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
   }
 
   Future<void> _fetchMoreData() async {
-    if (_hasMore && !_isFetchingMore) {
+    if (_hasMore && !_isFetchingMore && mounted) {
       setState(() {
         _isFetchingMore = true;
       });
@@ -78,12 +79,31 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
       });
 
       final response = await http.get(uri);
+      print('Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
+        print('Response Body: ${response.body}');
         final data = json.decode(response.body);
+
         if (data['status'] == 'success') {
-          final List<dynamic> newData = data['data'];
+          final List<dynamic> newData = data['data'] ?? [];
           print('New Data: $newData');
+
+          if (newData.isEmpty) {
+            // Handle empty data from API
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+              _isFetchingMore = false;
+              _hasMore = false;
+              // Only set error message if this is the first page
+              if (_page == 1) {
+                _errorMessage = 'No data found for the selected date range';
+              }
+            });
+            return;
+          }
+
           final parsedData = newData.map((item) {
             return {
               'id': item['id'],
@@ -102,8 +122,11 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
             };
           }).toList();
 
+          if (!mounted) return;
           setState(() {
-            print('Bkash: ${parsedData[0]['bKash']}');
+            if (parsedData.isNotEmpty) {
+              print('First item bKash: ${parsedData[0]['bKash']}');
+            }
             _dailyData.addAll(parsedData);
             _isLoading = false;
             _isFetchingMore = false;
@@ -112,24 +135,32 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
             }
           });
         } else {
+          // Handle error status from API
+          if (!mounted) return;
           setState(() {
-            _errorMessage = data['message'];
+            _errorMessage = data['message'] ?? 'An error occurred';
             _isLoading = false;
             _isFetchingMore = false;
+            _hasMore = false;
           });
         }
       } else {
+        if (!mounted) return;
         setState(() {
           _errorMessage = 'Failed to load data. Status: ${response.statusCode}';
           _isLoading = false;
           _isFetchingMore = false;
+          _hasMore = false;
         });
       }
     } catch (e) {
+      print('Error: $e');
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'An error occurred: $e';
         _isLoading = false;
         _isFetchingMore = false;
+        _hasMore = false;
       });
     }
   }
@@ -172,9 +203,52 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: _isLoading && _dailyData.isEmpty
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
-          : _errorMessage.isNotEmpty
-          ? Center(child: Text(_errorMessage))
+          ? Column(
+        children: [
+          _buildHeader(),
+          const Expanded(
+            child: Center(
+              child: CircularProgressIndicator(color: Colors.deepPurple),
+            ),
+          ),
+        ],
+      )
+          : _errorMessage.isNotEmpty && _dailyData.isEmpty
+          ? Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.info_outline, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                    child: Text(
+                      _errorMessage,
+                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _fetchData,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      )
           : RefreshIndicator(
         onRefresh: _fetchData,
         child: SingleChildScrollView(
@@ -200,7 +274,7 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
                         padding: EdgeInsets.all(16.0),
                         child: Center(child: CircularProgressIndicator(color: Colors.deepPurple)),
                       ),
-                    if (!_hasMore)
+                    if (!_hasMore && _dailyData.isNotEmpty)
                       const Padding(
                         padding: EdgeInsets.all(16.0),
                         child: Center(
@@ -402,7 +476,7 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 height: 250,
-                width: _dailyData.length * 50.0,
+                width: _dailyData.isEmpty ? 300 : _dailyData.length * 50.0,
                 child: _dailyData.isEmpty
                     ? const Center(
                   child: Text(
@@ -420,6 +494,15 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
   }
 
   Widget _buildBarChart() {
+    if (_dailyData.isEmpty) {
+      return const Center(
+        child: Text(
+          'No data to display.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
     _dailyData.sort((a, b) => a['date'].compareTo(b['date']));
 
     double maxY = _dailyData.fold(0.0, (prev, element) {
@@ -428,6 +511,7 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
       return prev > sales ? (prev > costing ? prev : costing) : (sales > costing ? sales : costing);
     });
     maxY = (maxY * 1.2).ceilToDouble();
+    if (maxY == 0) maxY = 100; // Set a minimum value to avoid division by zero
 
     List<BarChartGroupData> barGroups = [];
     for (int i = 0; i < _dailyData.length; i++) {
@@ -618,44 +702,43 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
       ),
     );
   }
+
   Widget _buildPaymentMethodCard({required String name, required double amount, required Color color}) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.7),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                ),
-                overflow: TextOverflow.ellipsis,
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                '\৳${amount.toStringAsFixed(1)}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '\৳${amount.toStringAsFixed(1)}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -688,7 +771,17 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ListView.builder(
+            _dailyData.isEmpty
+                ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Text(
+                  'No records available',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+              ),
+            )
+                : ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _dailyData.length,
@@ -793,7 +886,7 @@ class _SalesDashboardScreenState extends State<SalesDashboardScreen> {
                   ),
                 );
               },
-            )
+            ),
           ],
         ),
       ),

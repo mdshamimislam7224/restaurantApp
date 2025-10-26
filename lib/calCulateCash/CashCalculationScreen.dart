@@ -690,7 +690,6 @@ class _CashCalculationScreenState extends State<CashCalculationScreen> {
           final responseBody = jsonDecode(response.body);
           if (responseBody['status'] == 'success') {
             customdialog.showSuccess('Sync Successful', 'Data synced to Google Sheets');
-
             final dbClient = await DBHelper.db;
             await dbClient.insert('localCalculateCash_cache',
                 {
