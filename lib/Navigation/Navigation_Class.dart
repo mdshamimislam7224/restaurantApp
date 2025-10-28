@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:restaurant_inventory/Staff/SalaryRecordScreen.dart';
+import 'package:restaurant_inventory/Staff/StaffPaymentDetailsScreen.dart';
 import 'package:restaurant_inventory/admin/SalesDashboardScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
@@ -23,7 +23,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     CombinedSellManagementScreen(),
     CostingRecordScreen(),
     StaffListScreen(),
-    SalaryRecordScreen(),
+    StaffPaymentDetailsScreen(),
     combinedAddFoodListManagementScreen(),
     SalesDashboardScreen(),
     DashboardScreen(),
