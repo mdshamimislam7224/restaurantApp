@@ -20,7 +20,7 @@ class StaffPaymentDetailsScreen extends StatefulWidget {
 
 class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
   // Constants
-  static const _paymentApiUrl = "https://script.google.com/macros/s/AKfycbx3tqYf5Rfw-ZZFYuvM_M3g68tn5Z9_xn63keHFOnBpazIpBRYj8Mf7lSYj4qCpzl_n/exec?action=recordPartialPayment";
+  static const _paymentApiUrl = "https://script.google.com/macros/s/AKfycbxJgf70wa2BMQ65h4x0BkeXEQ9XrFBCdwEGCQduCxJyfYCdFeO43rKhGHDnCZbyKP28/exec?action=recordPartialPayment";
   static const _timeoutDuration = Duration(seconds: 30);
 
   // Controllers & State
@@ -158,7 +158,6 @@ class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
     }
     print('Error: $e');
   }
-
   // ============ PAYMENT PROCESSING ============
   Future<void> _processPayment({
     required String employeeId,
@@ -980,6 +979,7 @@ class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
     }
 
     try {
+      print("selectedMonth: $selectedMonth");
       _processPayment(
         employeeId: staff.employeeId,
         employeeName: staff.employeeName,
@@ -994,7 +994,6 @@ class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
       toast.showToast("Invalid amount format", Colors.red, Colors.white);
     }
   }
-
   void _showPaySpecificMonthDialog(StaffDetail staff, MonthlyPayment monthly) {
     final amountController = TextEditingController(text: monthly.remaining.toString());
     final notesController = TextEditingController();
@@ -1053,6 +1052,7 @@ class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
     }
 
     try {
+      print("_handleSpecificMonthPayment selectedMonth: $month");
       _processPayment(
         employeeId: staff.employeeId,
         employeeName: staff.employeeName,

@@ -8,6 +8,7 @@ import '../DashboardScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Food List/menu_item_manager_screen.dart';
 import '../Staff/StaffListScreen.dart';
+import '../attendance/RecognitionScreen.dart';
 import '../calCulateCash/CashCalculationScreen.dart';
 
 class Navigation_Class extends StatefulWidget {
@@ -21,6 +22,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   final List<Widget> _pages = [
     CashCalculationScreen(),
     CombinedSellManagementScreen(),
+    RecognitionScreen(),
     CostingRecordScreen(),
     StaffListScreen(),
     StaffPaymentDetailsScreen(),
