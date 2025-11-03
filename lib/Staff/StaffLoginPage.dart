@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:http/http.dart' as http;
 import 'package:restaurant_inventory/Navigation/Navigation_Class.dart';
-import 'package:restaurant_inventory/Staff/StaffProfileView.dart';
-// import your StaffProfileScreen
+import '../attendance/Recognizer.dart';
+import '../attendance/faceRegistration.dart';
+import '../localDB/DatabaseHelper.dart';
+import '../sharedPref/SharedPrefsHelper.dart';
+
 class StaffLoginPage extends StatefulWidget {
   const StaffLoginPage({Key? key}) : super(key: key);
 
@@ -12,14 +16,19 @@ class StaffLoginPage extends StatefulWidget {
 }
 
 class _StaffLoginPageState extends State<StaffLoginPage> {
+  final SharedPrefsHelper _sharedPrefsHelper = SharedPrefsHelper();
+
   final _formKey = GlobalKey<FormState>();
   final TextEditingController staffIdCtrl = TextEditingController();
   final TextEditingController passwordCtrl = TextEditingController();
+  late faceRegistration faceReg;
+  late FaceDetector detector;
+  late DatabaseHelper dbHelper;
 
   bool isLoading = false;
 
-  // --- Replace with your deployed Apps Script URL ---
   final String apiUrl = "https://script.google.com/macros/s/AKfycbxLSYMHjEtVLPEDLRhBUFy9wUIgHOd9wYBOZXsHIuegQJBSvSkhWLC4OcsP96t8zikR/exec?action=login";
+
   Future<void> login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -34,9 +43,6 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
           "password": passwordCtrl.text.trim(),
         }),
       );
-
-      // Handle redirect (Google sometimes returns 302)
-      print("Response Status: ${response.statusCode}");
 
       if ([301, 302, 307, 308].contains(response.statusCode)) {
         final newUrl = response.headers['location'];
@@ -61,16 +67,30 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
       print(data);
       if (data["status"] == "success") {
         _showMessage("Login Successful ✅");
-
         final staffInfo = data["data"];
+        final sharedPrefsHelper = SharedPrefsHelper();
+        final isLoggedIn = await sharedPrefsHelper.isStaffLoggedIn();
+        print("Is logged in: $isLoggedIn");
+        final profileImageUrl = staffInfo["staff_profileimage"]?.toString() ?? '';
+        final staffId = staffInfo["staff_id"]?.toString() ?? '';
+        final staffName = staffInfo["staff_name"]?.toString() ?? '';
+        if(isLoggedIn){
+          await sharedPrefsHelper.clearAll();
+          await dbHelper.deleteUser(staffId);
+          // Save staff login data and register face
+          await sharedPrefsHelper.saveStaffLoginData(staffInfo);
+          await registerFace(profileImageUrl, staffId, staffName);
 
-        // ✅ Navigate to Profile Screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => Navigation_Class(),
-          ),
-        );
+        } else {
+          final result = await dbHelper.queryAllRows();
+          if(result.isNotEmpty){
+            await dbHelper.deleteUser(staffId);
+          }
+          await sharedPrefsHelper.saveStaffLoginData(staffInfo);
+          await registerFace(profileImageUrl, staffId, staffName);
+        }
+
+
       } else {
         _showMessage(data["message"] ?? "Invalid credentials");
       }
@@ -83,6 +103,88 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    await initialDB();
+
+    final recognizer = Recognizer();
+    detector = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.accurate,
+        enableContours: true,
+        enableClassification: true,
+      ),
+    );
+
+    faceReg = faceRegistration(
+      recognizer: recognizer,
+      dbHelper: dbHelper,
+      detector: detector,
+    );
+
+    _checkAutoLogin();
+  }
+
+  Future<void> initialDB() async {
+    dbHelper = DatabaseHelper();
+    await dbHelper.init();
+    print('Database initialized successfully');
+  }
+
+  Future<void> _checkAutoLogin() async {
+    try {
+      final isLoggedIn = await _sharedPrefsHelper.isStaffLoggedIn();
+      print('isLoggedIn: $isLoggedIn');
+      if (isLoggedIn) {
+        final staffData = await _sharedPrefsHelper.getStaffLoginData();
+        print('Auto-login with: $staffData');
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => Navigation_Class()),
+        );
+      } else {
+        print('No auto-login data found');
+      }
+    } catch (e) {
+      print('Error in auto-login check: $e');
+    }
+  }
+
+  Future<void> registerFace(String imagePath, String staffId, String staffName) async {
+    try {
+      final success = await faceReg.loadImageFromUrl(imagePath, staffId, staffName);
+
+      if (success) {
+        print('Face registration successful!');
+      } else {
+        print('Face registration failed - no face detected or other issue');
+      }
+
+      // Navigate regardless of face registration success
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => Navigation_Class()),
+      );
+
+    } catch (e) {
+      print('Error in registerFace: $e');
+      // Still navigate even if there's an error
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => Navigation_Class()),
+      );
+    } finally {
+      // Don't dispose here - let the Navigation_Class handle it or dispose in the faceRegistration class itself
+      // await faceReg.dispose();
+    }
   }
 
   @override
@@ -107,7 +209,6 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
                   ),
                   const SizedBox(height: 30),
 
-                  // --- Staff ID ---
                   TextFormField(
                     controller: staffIdCtrl,
                     decoration: const InputDecoration(
@@ -120,7 +221,6 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // --- Password ---
                   TextFormField(
                     controller: passwordCtrl,
                     obscureText: true,
@@ -134,7 +234,6 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
                   ),
                   const SizedBox(height: 30),
 
-                  // --- Login Button ---
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -147,8 +246,7 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
                           ? const CircularProgressIndicator(color: Colors.white)
                           : const Text(
                         "Login",
-                        style:
-                        TextStyle(fontSize: 18, color: Colors.white),
+                        style: TextStyle(fontSize: 18, color: Colors.white),
                       ),
                     ),
                   ),
@@ -159,5 +257,18 @@ class _StaffLoginPageState extends State<StaffLoginPage> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // Dispose resources when the widget is disposed
+    try {
+       detector.close();
+      faceReg.dispose();
+      detector.close();
+    } catch (e) {
+      print('Error disposing face detector: $e');
+    }
+    super.dispose();
   }
 }

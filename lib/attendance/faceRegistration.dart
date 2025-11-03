@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:http/http.dart' as http;
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../localDB/DBHelper.dart';
 import '../localDB/DatabaseHelper.dart';
 import 'Recognition.dart';
 import 'Recognizer.dart';
@@ -25,6 +25,61 @@ class faceRegistration {
     required this.detector,
   });
 
+  // NEW METHOD: Load image from Google Drive URL instead of local path
+  Future<bool> loadImageFromUrl(String imageUrl, String staffId, String staffName) async {
+    try {
+      // Set staff information
+      f_Name = staffName;
+      l_Name = ''; // You can modify this if you have last name
+
+      if (imageUrl.isEmpty) {
+        print('No image URL provided');
+        return false;
+      }
+
+      // Download image from Google Drive
+      return await _downloadAndProcessImage(imageUrl);
+    } catch (e) {
+      print('Error in loadImageFromUrl: $e');
+      return false;
+    }
+  }
+
+  // NEW METHOD: Download image from Google Drive
+  Future<bool> _downloadAndProcessImage(String imageUrl) async {
+    try {
+      // Convert Google Drive URL to direct download URL
+      final directUrl = _getDirectImageUrl(imageUrl);
+      print('Downloading image from: $directUrl');
+
+      // Download image bytes
+      final response = await http.get(Uri.parse(directUrl));
+      if (response.statusCode != 200) {
+        print('Failed to download image: ${response.statusCode}');
+        return false;
+      }
+
+      final bytes = response.bodyBytes;
+
+      // Create temporary file to simulate the original file-based approach
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/temp_face_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      // Write bytes to temporary file (to keep the original _processImage logic unchanged)
+      await tempFile.writeAsBytes(bytes);
+      imagePath = tempFile.path;
+
+      print('Image downloaded successfully to: $imagePath');
+
+      // Use the original _processImage method
+      return await _processImage();
+    } catch (e) {
+      print('Error in _downloadAndProcessImage: $e');
+      return false;
+    }
+  }
+
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   Future<bool> loadImagePath() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -44,6 +99,7 @@ class faceRegistration {
     }
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   Future<bool> _processImage() async {
     try {
       final file = File(imagePath);
@@ -85,6 +141,7 @@ class faceRegistration {
     }
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   Future<bool> _performFaceRegistration(List<Face> faces) async {
     try {
       bool allSuccess = true;
@@ -130,6 +187,7 @@ class faceRegistration {
     }
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   List<Face> _mergeBoundingBoxes(List<Face> faces) {
     final mergedFaces = <Face>[];
     final rects = faces.map((face) => face.boundingBox).toList();
@@ -156,10 +214,12 @@ class faceRegistration {
     return mergedFaces;
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   bool _isOverlapping(Rect rect1, Rect rect2) {
     return rect1.overlaps(rect2);
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   bool _isAdjacent(Rect rect1, Rect rect2) {
     return rect1.right >= rect2.left &&
         rect1.left <= rect2.right &&
@@ -167,6 +227,7 @@ class faceRegistration {
         rect1.top <= rect2.bottom;
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   List<Face> _filterValidFaces(List<Face> faces) {
     return faces.where((face) {
       final rect = face.boundingBox;
@@ -178,11 +239,23 @@ class faceRegistration {
     }).toList();
   }
 
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   bool _hasRequiredLandmarks(Face face) {
     // Implement your landmark validation logic
     return true; // Placeholder
   }
 
+  // NEW METHOD: Convert Google Drive URL to direct download URL
+  String _getDirectImageUrl(String driveUrl) {
+    final regExp = RegExp(r'file/d/([a-zA-Z0-9_-]+)');
+    final match = regExp.firstMatch(driveUrl);
+    if (match != null && match.groupCount >= 1) {
+      return 'https://drive.google.com/uc?export=download&id=${match.group(1)}';
+    }
+    return driveUrl;
+  }
+
+  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   Future<void> dispose() async {
     await detector.close();
   }

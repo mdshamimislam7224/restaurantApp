@@ -51,7 +51,7 @@ class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
   Future<void> _loadStaffBasicList() async {
     try {
       final response = await http.get(
-          Uri.parse("${apiClass.baseUrlStaff}?action=getStaffListBasic")
+          Uri.parse("${apiClass().baseUrlStaff}?action=getStaffListBasic")
       ).timeout(_timeoutDuration);
 
       if (response.statusCode == 200) {
@@ -92,7 +92,7 @@ class _StaffPaymentDetailsScreenState extends State<StaffPaymentDetailsScreen> {
   }
 
   String _buildPaymentDetailsUrl(String? searchQuery) {
-    String url = '${apiClass.baseUrlStaff}?action=getStaffPaymentDetailsByRange'
+    String url = '${apiClass().baseUrlStaff}?action=getStaffPaymentDetailsByRange'
         '&startMonth=${startMonthController.text}'
         '&endMonth=${endMonthController.text}';
 

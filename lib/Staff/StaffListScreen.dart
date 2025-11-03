@@ -39,7 +39,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
 
     try {
       final response = await http.get(
-        Uri.parse('${apiClass.baseUrlStaff}?action=getStaff'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=getStaff'),
       ).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
@@ -84,7 +84,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
     final client = http.Client(); // Create a new HTTP client for this request
     try {
       http.Response response = await client.post(
-        Uri.parse('${apiClass.baseUrlStaff}?action=deleteStaff'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=deleteStaff'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'staffId': staffId.trim()}),
       ).timeout(const Duration(seconds: 30));
@@ -363,7 +363,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
               // ... inside submitData() function ...
               try {
                 http.Response response = await client.post(
-                  Uri.parse('${apiClass.baseUrlStaff}?action=StaffAdd'),
+                  Uri.parse('${apiClass().baseUrlStaff}?action=StaffAdd'),
                   headers: {
                     'Content-Type': 'application/json',
                   },
@@ -1372,7 +1372,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
       debugPrint('Sending payload: ${json.encode(payload)}');
       final client = http.Client();
       http.Response response = await client.post(
-        Uri.parse('${apiClass.baseUrlStaff}?action=updateStaff'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=updateStaff'),
         headers: {
           'Content-Type': 'application/json',
         },

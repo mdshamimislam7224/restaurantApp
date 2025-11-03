@@ -91,7 +91,7 @@ class DatabaseHelper {
   }
 
   // Delete a row from Attendance_Table by ID
-  Future<int> deleteAttendance(int id) async {
+  Future<int> deleteAttendance(String id) async {
     return await _db.delete(
       attendanceTable,
       where: '$attendanceId = ?',
@@ -118,7 +118,8 @@ class DatabaseHelper {
 
   // Deletes the row specified by the id. The number of affected rows is
   // returned. This should be 1 as long as the row exists.
-  Future<int> delete(int id) async {
+  Future<int> deleteUser(String id) async {
+    deleteAttendance(id);
     return await _db.delete(
       table,
       where: '$columnId = ?',

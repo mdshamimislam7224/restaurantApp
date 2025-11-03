@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
+import '../api/apiClass.dart';
 import 'Staff.dart';
 class StaffProfileScreen extends StatefulWidget {
   final String staffId;
@@ -40,9 +41,8 @@ class _StaffProfileViewState extends State<StaffProfileScreen> {
       });
 
       final response = await http.get(
-        Uri.parse('https://script.google.com/macros/s/AKfycbzZC0sGCKNEm327PC4pYRmjGIOo5f94c6lAOb7Nj3-BEhkDh3N07aPM7SeiYPDo0Uw/exec?action=getEmployeeById&staffId=${widget.staffId}'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=getEmployeeById&staffId=${widget.staffId}'),
       );
-
       print('Response status: ${response.statusCode}'); // Debug
       print('Response body: ${response.body}'); // Debug
 
@@ -168,13 +168,25 @@ class _StaffProfileViewState extends State<StaffProfileScreen> {
             ),
           ),
           SizedBox(height: 4),
-          Text(
-            _staff!.position,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
+          Container(
+            decoration: BoxDecoration(
+              color: _staff!.status == 'Active'
+                  ? Colors.green[300]
+                  : Colors.red[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Text(
+                _staff!.status,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
+
         ],
       ),
     );
@@ -196,6 +208,7 @@ class _StaffProfileViewState extends State<StaffProfileScreen> {
               ),
             ),
             Divider(),
+            _buildInfoRow('Designation',_staff!.position),
             _buildInfoRow('Staff ID', _staff!.id),
             _buildInfoRow('Phone', _staff!.phone),
             _buildInfoRow('Email', _staff!.email.isNotEmpty ? _staff!.email : 'Not provided'),

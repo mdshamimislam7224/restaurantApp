@@ -1,109 +1,114 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-
 class SharedPrefsHelper {
-  // Keys
 
-  final String _accessTokenKey = 'accessToken';
-  final String _refreshTokenKey = 'refreshToken';
-  final String _userID = 'userID';
-  final String _officialID='officialID';
-  final String _firstNameKey = 'firstName';
-  final String _lastNameKey = 'lastName';
-  final String _emailKey = 'email';
-  final String _usernameKey = 'username';
-  final String _savedImagePathKey = 'savedImagePath';
-  final String _designationKey = 'designation';
-  final String _departmentNameKey = 'departmentName';
-  // Save data
-  Future<void> saveAccessToken(String token) async {
+
+  // Staff Login Keys
+  final String _staffIdKey = 'staff_id';
+  final String _staffNameKey = 'staff_name';
+  final String _staffPositionKey = 'staff_position';
+  final String _staffStatusKey = 'status';
+  final String _staffUserRoleKey = 'userrole';
+  final String _loginTimeKey = 'login_time';
+  final String _userDataKey = 'user_data';
+
+  // ✅ Save Staff Login Data
+  Future<void> saveStaffLoginData(Map<String, dynamic> staffInfo) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_accessTokenKey, token);
+
+    // Save the required fields
+    await prefs.setString(_staffIdKey, staffInfo['staff_id']?.toString() ?? '');
+    await prefs.setString(_staffNameKey, staffInfo['staff_name']?.toString() ?? '');
+    await prefs.setString(_staffPositionKey, staffInfo['staff_position']?.toString() ?? '');
+    await prefs.setString(_staffStatusKey, staffInfo['status']?.toString() ?? '');
+    await prefs.setString(_staffUserRoleKey, staffInfo['userrole']?.toString() ?? '');
+
+    // Save login timestamp
+    await prefs.setString(_loginTimeKey, DateTime.now().toIso8601String());
+
+    // Save all user data as JSON string for future use
+    await prefs.setString(_userDataKey, jsonEncode(staffInfo));
+
+    print('✅ Staff login data saved to SharedPreferences');
   }
-  Future<void> saveOfficialID(String token) async {
+  // ✅ Get Staff Login Data
+  Future<Map<String, String>> getStaffLoginData() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_officialID, token);
-  }
-
-  Future<void> saveRefreshToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_refreshTokenKey, token);
-  }
-
-  Future<void> saveUserDetails(int id,String firstName, String lastName, String email, String username,String designation, String departName) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_userID, id);
-    await prefs.setString(_firstNameKey, firstName);
-    await prefs.setString(_lastNameKey, lastName);
-    await prefs.setString(_emailKey, email);
-    await prefs.setString(_usernameKey, username);
-    await prefs.setString(_designationKey, designation);
-    await prefs.setString(_departmentNameKey,departName);
-  }
-
-  Future<Map<String, dynamic>> getUserDetails() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? officialID= prefs.getString(_officialID);
-    final String? fname = prefs.getString(_firstNameKey);
-    final String? lname = prefs.getString(_lastNameKey);
-    final String? designation = prefs.getString(_designationKey);
-    final String? department = prefs.getString(_departmentNameKey);
-
-    // Return the user details in a map
     return {
-      'id': officialID,
-      'fname': fname,
-      'lname': lname,
-      'designation': designation,
-      'department': department,
+      'staff_id': prefs.getString(_staffIdKey) ?? '',
+      'staff_name': prefs.getString(_staffNameKey) ?? '',
+      'staff_position': prefs.getString(_staffPositionKey) ?? '',
+      'status': prefs.getString(_staffStatusKey) ?? '',
+      'userrole': prefs.getString(_staffUserRoleKey) ?? '',
     };
   }
 
-
-
-  Future<void> saveImagePath(String path) async {
+  // ✅ Get Complete Staff Data (from JSON)
+  Future<Map<String, dynamic>?> getCompleteStaffData() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_savedImagePathKey, path);
+    final String? userDataJson = prefs.getString(_userDataKey);
+    if (userDataJson != null && userDataJson.isNotEmpty) {
+      try {
+        return jsonDecode(userDataJson);
+      } catch (e) {
+        print('Error parsing user data: $e');
+        return null;
+      }
+    }
+    return null;
   }
 
-  // Get data
-  Future<String?> getAccessToken() async {
+
+  // ✅ Get Staff User Role
+  Future<String> getStaffUserRole() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_accessTokenKey);
+    return prefs.getString(_staffUserRoleKey) ?? '';
+  }
+
+  // ✅ Get Login Time
+  Future<DateTime?> getLoginTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? loginTimeStr = prefs.getString(_loginTimeKey);
+    if (loginTimeStr != null && loginTimeStr.isNotEmpty) {
+      try {
+        return DateTime.parse(loginTimeStr);
+      } catch (e) {
+        print('Error parsing login time: $e');
+      }
+    }
+    return null;
   }
   // get Official ID
   Future<String?> getOfficialID() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_officialID);
-  }
-  Future<String?> getRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_refreshTokenKey);
-  }
-  // get ID
-  Future<int?> getUserID() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_userID);
+    final staffId = prefs.getString(_staffIdKey);
+    return prefs.getString(_staffIdKey);
   }
 
-  Future<String?> getSavedImagePath() async {
+  // ✅ Remove Staff Login Data
+  Future<void> removeStaffLoginData() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_savedImagePathKey);
+    await prefs.remove(_staffIdKey);
+    await prefs.remove(_staffNameKey);
+    await prefs.remove(_staffPositionKey);
+    await prefs.remove(_staffStatusKey);
+    await prefs.remove(_staffUserRoleKey);
+    await prefs.remove(_loginTimeKey);
+    await prefs.remove(_userDataKey);
   }
-
-  // Remove data
-  Future<void> removeAccessToken() async {
+  Future<bool> isStaffLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_accessTokenKey);
+    final staffId = prefs.getString(_staffIdKey);
+    return staffId != null && staffId.isNotEmpty;
   }
-
-  Future<void> removeRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_refreshTokenKey);
-  }
-
-
   Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+  }
+
+  // ✅ Clear only staff data (keep other app data)
+  Future<void> clearStaffDataOnly() async {
+    final prefs = await SharedPreferences.getInstance();
+    await removeStaffLoginData();
   }
 }
