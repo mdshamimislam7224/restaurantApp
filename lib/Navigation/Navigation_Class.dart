@@ -1,12 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/Staff/StaffPaymentDetailsScreen.dart';
+import 'package:restaurant_inventory/Staff/StaffSinglePaymentDetailsScreen.dart';
 import 'package:restaurant_inventory/admin/SalesDashboardScreen.dart';
 import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
 import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
-import '../DashboardScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
-import '../Food List/menu_item_manager_screen.dart';
 import '../Staff/StaffListScreen.dart';
 import '../Staff/StaffLoginPage.dart';
 import '../Staff/StaffProfileScreen.dart';
@@ -27,30 +26,41 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   String _staffName = '';
   String _staffStatus = '';
   String _staffPosition = '';
-  late String staffId;
-  final List<Widget> _pages = [
-    //this class for locally stored data Dashboard
-    CashCalculationScreen(),
-   //Sell Management Locally
-    CombinedSellManagementScreen(),
-    //Costing Management
-    CostingRecordScreen(),
-    //Staff Profile
-    // StaffProfileScreen( staffId: staffId,),
-    //Staff Payment
-    StaffPaymentDetailsScreen(),
-    //Attendance
-    RecognitionScreen(),
-    // Single Staff show Attendance
-    StaffPaymentDetailsScreen(),
-    //For Admin Only Staff List
-    StaffListScreen(),
-    //For Admin Only Food List
-    combinedAddFoodListManagementScreen(),
-   //For Admin Only Sales Dashboard Online
-    SalesDashboardScreen(),
+  String staffId = '';
+  String _staffJoningDate = '';
+  List<Widget>? _pages;
 
-  ];
+
+  Future<void> _loadUserData() async {
+    final staffData = await _sharedPrefsHelper.getStaffLoginData();
+    setState(() {
+      _userRole = staffData['userrole'] ?? '';
+      _staffName = staffData['staff_name'] ?? '';
+      _staffPosition = staffData['staff_position'] ?? '';
+      staffId = staffData['staff_id'] ?? '';
+      _staffStatus = staffData['status'] ?? '';
+      _staffJoningDate = staffData['joiningdate'] ?? '';
+    });
+
+    // ✅ Initialize _pages AFTER data loaded
+    setState(() {
+      _pages = [
+        CashCalculationScreen(),
+        CombinedSellManagementScreen(),
+        CostingRecordScreen(),
+        StaffProfileScreen(staffId: staffId),
+        StaffSinglePaymentDetailsScreen(
+          staffId: staffId,
+          staffJoiningDate: _staffJoningDate,
+        ),
+        RecognitionScreen(),
+        StaffPaymentDetailsScreen(),
+        StaffListScreen(),
+        combinedAddFoodListManagementScreen(),
+        SalesDashboardScreen(),
+      ];
+    });
+  }
   final List<String> _pageTitles = [
     "Dashboard",
     'Sell Management',
@@ -278,20 +288,27 @@ class _Navigation_ClassState extends State<Navigation_Class> {
 
   @override
   Widget build(BuildContext context) {
+    // 🕒 Show loading indicator until pages are ready
+    if (_pages == null) {
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: _selectedDrawerIndex < _appBarColors.length
             ? _appBarColors[_selectedDrawerIndex]
-            : Colors.grey, // Fallback color
+            : Colors.grey,
         elevation: 0,
         title: Text(
           _pageTitles[_selectedDrawerIndex],
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold,color:Colors.white),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
         leading: _selectedDrawerIndex != 0
             ? IconButton(
-          icon: Icon(Icons.arrow_back,color: Colors.white,),
+          icon: Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
             setState(() {
               _selectedDrawerIndex = 0;
@@ -314,9 +331,10 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         ),
       )
           : null,
-      body: _pages[_selectedDrawerIndex],
+      body: _pages![_selectedDrawerIndex],
     );
   }
+
 
   @override
   void initState() {
@@ -324,22 +342,18 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     _loadUserData();
   }
 
-  Future<void> _loadUserData() async {
-    final staffData = await _sharedPrefsHelper.getStaffLoginData();
-    setState(() {
-      _userRole = staffData['userrole'] ?? '';
-      _staffName = staffData['staff_name'] ?? '';
-      _staffPosition = staffData['staff_position'] ?? '';
-      staffId = staffData['staff_id'] ?? '';
-      _staffStatus = staffData['status'] ?? '';
-    });
-  }
   Future<void> _logout() async {
     final staffData = await _sharedPrefsHelper.getStaffLoginData();
     await _sharedPrefsHelper.removeStaffLoginData();
     await _sharedPrefsHelper.clearAll();
     DatabaseHelper databaseHelper = DatabaseHelper();
-    await databaseHelper.deleteUser(staffData['staff_id']?.toString() ?? '');
+    await databaseHelper.init();
+    final allRows = await databaseHelper.queryAllRows();
+    if (allRows.isNotEmpty) {
+      await databaseHelper.deleteUser(staffData['staff_id']?.toString() ?? '');
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffLoginPage()),
+      );
+    }
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffLoginPage()),
     );
   }

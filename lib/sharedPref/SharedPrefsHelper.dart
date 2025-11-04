@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 class SharedPrefsHelper {
 
@@ -6,6 +7,7 @@ class SharedPrefsHelper {
   // Staff Login Keys
   final String _staffIdKey = 'staff_id';
   final String _staffNameKey = 'staff_name';
+  final String _staffJoiningDateKey = 'joiningdate';
   final String _staffPositionKey = 'staff_position';
   final String _staffStatusKey = 'status';
   final String _staffUserRoleKey = 'userrole';
@@ -16,12 +18,25 @@ class SharedPrefsHelper {
   Future<void> saveStaffLoginData(Map<String, dynamic> staffInfo) async {
     final prefs = await SharedPreferences.getInstance();
 
+    // 🧩 Format joining date if available
+    String formattedJoiningDate = '';
+    if (staffInfo['joiningdate'] != null && staffInfo['joiningdate'].toString().isNotEmpty) {
+      try {
+        DateTime utcDate = DateTime.parse(staffInfo['joiningdate']);
+        DateTime localDate = utcDate.toLocal();
+        formattedJoiningDate = DateFormat('yyyy-MM-dd').format(localDate);
+      } catch (e) {
+        print('⚠️ Invalid joiningdate format: $e');
+      }
+    }
+
     // Save the required fields
     await prefs.setString(_staffIdKey, staffInfo['staff_id']?.toString() ?? '');
     await prefs.setString(_staffNameKey, staffInfo['staff_name']?.toString() ?? '');
     await prefs.setString(_staffPositionKey, staffInfo['staff_position']?.toString() ?? '');
     await prefs.setString(_staffStatusKey, staffInfo['status']?.toString() ?? '');
     await prefs.setString(_staffUserRoleKey, staffInfo['userrole']?.toString() ?? '');
+    await prefs.setString(_staffJoiningDateKey, formattedJoiningDate);
 
     // Save login timestamp
     await prefs.setString(_loginTimeKey, DateTime.now().toIso8601String());
@@ -30,7 +45,9 @@ class SharedPrefsHelper {
     await prefs.setString(_userDataKey, jsonEncode(staffInfo));
 
     print('✅ Staff login data saved to SharedPreferences');
+    print('🗓️ Formatted joining date: $formattedJoiningDate');
   }
+
   // ✅ Get Staff Login Data
   Future<Map<String, String>> getStaffLoginData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,6 +57,7 @@ class SharedPrefsHelper {
       'staff_position': prefs.getString(_staffPositionKey) ?? '',
       'status': prefs.getString(_staffStatusKey) ?? '',
       'userrole': prefs.getString(_staffUserRoleKey) ?? '',
+      'joiningdate': prefs.getString(_staffJoiningDateKey) ?? '',
     };
   }
 
