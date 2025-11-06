@@ -6,7 +6,6 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import '../localDB/DatabaseHelper.dart';
 import 'Recognition.dart';
 
-
 class Recognizer {
   late Interpreter interpreter;
   late InterpreterOptions _interpreterOptions;
@@ -26,8 +25,8 @@ class Recognizer {
     loadModel();
     initDB();
   }
-  initDB() async {
 
+  initDB() async {
     await dbHelper.init();
     loadRegisteredFaces();
   }
@@ -46,6 +45,7 @@ class Recognizer {
           row[DatabaseHelper.columnName], Rect.zero, embd, 0);
       registered.putIfAbsent(name, () => recognition);
     }
+    print("Loaded ${registered.length} registered faces");
   }
 
   void registerFaceInDB(String name, List<double> embedding) async {
@@ -59,14 +59,15 @@ class Recognizer {
 
   Future<void> loadModel() async {
     try {
-      interpreter = await Interpreter.fromAsset(modelName);
+      interpreter = await Interpreter.fromAsset(modelName, options: _interpreterOptions);
+      print("Model loaded successfully");
     } catch (e) {
       print('Unable to create interpreter, Caught Exception: ${e.toString()}');
     }
   }
 
   List<dynamic> imageToArray(img.Image inputImage) {
-    img.Image resizedImage = img.copyResize(inputImage!, width: WIDTH, height: HEIGHT);
+    img.Image resizedImage = img.copyResize(inputImage, width: WIDTH, height: HEIGHT);
     List<double> flattenedList = resizedImage.data!
         .expand((channel) => [channel.r, channel.g, channel.b])
         .map((value) => value.toDouble())
@@ -94,30 +95,51 @@ class Recognizer {
 
     List<double> outputArray = output.first.cast<double>();
     Pair pair = findNearest(outputArray);
-    print("distance= ${pair.distance}");
+    print("Recognition - Name: ${pair.name}, Distance: ${pair.distance}");
 
     return Recognition(pair.name, location, outputArray, pair.distance);
   }
 
   Pair findNearest(List<double> emb) {
     Pair pair = Pair("Unknown", double.infinity);
+
+    if (registered.isEmpty) {
+      print("No registered faces in database");
+      return pair;
+    }
+
     for (MapEntry<String, Recognition> item in registered.entries) {
       List<double> knownEmb = item.value.embedding;
       double distance = 0;
+
+      // Use Euclidean distance
       for (int i = 0; i < emb.length; i++) {
         double diff = emb[i] - knownEmb[i];
         distance += diff * diff;
       }
       distance = sqrt(distance);
+
+      print("Distance to ${item.key}: $distance");
+
       if (distance < pair.distance) {
         pair.distance = distance;
         pair.name = item.key;
       }
     }
+
+    // Adjust threshold based on your model
+    // Typical thresholds for face recognition:
+    // - < 0.6: Very confident match
+    // - 0.6-1.0: Good match
+    // - > 1.0: Uncertain match
+    if (pair.distance > 1.0) { // Adjust this threshold as needed
+      pair.name = "Unknown";
+    }
+
     return pair;
   }
 
-  void close() {
+  void dispose() {
     interpreter.close();
   }
 }

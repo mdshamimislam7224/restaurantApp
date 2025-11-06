@@ -276,13 +276,13 @@ class _StaffSinglePaymentDetailsScreen extends State<StaffSinglePaymentDetailsSc
   Widget _buildProfileHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.blue.shade700, Colors.blue.shade500],
-        ),
+        // gradient: LinearGradient(
+        //   begin: Alignment.topLeft,
+        //   end: Alignment.bottomRight,
+        //   colors: [Colors.blue.shade700, Colors.black26],
+        // ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(30),
           bottomRight: Radius.circular(30),
@@ -291,21 +291,6 @@ class _StaffSinglePaymentDetailsScreen extends State<StaffSinglePaymentDetailsSc
       child: Column(
         children: [
           // Profile Avatar
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.2),
-              border: Border.all(color: Colors.white, width: 3),
-            ),
-            child: Icon(
-              Icons.person,
-              size: 40,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
 
           // Staff Name
           Text(
@@ -313,7 +298,7 @@ class _StaffSinglePaymentDetailsScreen extends State<StaffSinglePaymentDetailsSc
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: Colors.black,
             ),
           ),
           const SizedBox(height: 4),
@@ -324,26 +309,25 @@ class _StaffSinglePaymentDetailsScreen extends State<StaffSinglePaymentDetailsSc
               _staffPosition!,
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.black.withOpacity(0.8),
               ),
             ),
 
           const SizedBox(height: 8),
-
           // Staff ID & Joining Date
           Column(
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.black.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   'ID: ${widget.staffId}',
                   style: const TextStyle(
                     fontSize: 14,
-                    color: Colors.white,
+                    color: Colors.black,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -354,7 +338,7 @@ class _StaffSinglePaymentDetailsScreen extends State<StaffSinglePaymentDetailsSc
                   'Joined: ${DateFormat('MMM yyyy').format(_joiningDate!)}',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.black.withOpacity(0.8),
                   ),
                 ),
             ],

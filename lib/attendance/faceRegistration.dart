@@ -79,25 +79,6 @@ class faceRegistration {
     }
   }
 
-  // ORIGINAL METHOD - KEEP EXACTLY THE SAME
-  Future<bool> loadImagePath() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      imagePath = prefs.getString('savedImagePath') ?? '';
-      f_Name = prefs.getString('firstName') ?? '';
-      l_Name = prefs.getString('lastName') ?? '';
-
-      if (imagePath.isEmpty) {
-        print('No saved image path found');
-        return false;
-      }
-
-      return await _processImage();
-    } catch (e) {
-      print('Error in loadImagePath: $e');
-      return false;
-    }
-  }
 
   // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   Future<bool> _processImage() async {
@@ -140,6 +121,7 @@ class faceRegistration {
       await detector.close();
     }
   }
+
 
   // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   Future<bool> _performFaceRegistration(List<Face> faces) async {
@@ -213,6 +195,7 @@ class faceRegistration {
 
     return mergedFaces;
   }
+
 
   // ORIGINAL METHOD - KEEP EXACTLY THE SAME
   bool _isOverlapping(Rect rect1, Rect rect2) {

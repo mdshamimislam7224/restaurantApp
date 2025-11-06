@@ -3,33 +3,35 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
-import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
+import '../ForTestClass.dart';
 import '../Inernet_Check/InternetCheckCallback.dart';
 import '../Inernet_Check/Internet_check.dart';
-import '../Navigation/Navigation_Class.dart';
+import '../Location/LocationService.dart';
 import '../alertDialog/customdialog.dart';
-import '../location/LocationService.dart';
+import '../attendance/Recognition.dart';
+import '../attendance/Recognizer.dart';
+import '../localDB/DatabaseHelper.dart';
 import '../main.dart';
 import '../sharedPref/SharedPrefsHelper.dart';
-import 'Recognition.dart';
-import 'Recognizer.dart';
+
 
 class RecognitionScreen extends StatefulWidget {
-  RecognitionScreen({Key? key}) : super(key: key);
+  const RecognitionScreen({Key? key}) : super(key: key);
 
   @override
   _RecognitionScreen createState() => _RecognitionScreen();
@@ -57,20 +59,24 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   late Recognition recognition;
   int frameSkipCount = 0;
   final LocationService _locationService = LocationService();
+
   Timer? _locationUpdateTimer;
   Timer? _recognitionTimer;
   bool dataSendChecker = false;
-  bool isCheckingPermission = false; // New variable for loading state
   customDialog? customdialog;
   String? latitude;
   String? longitude;
   String deviceName = '';
   String deviceModel = '';
   bool isConnected = false;
-  String errorMessage = ''; // To store specific error message
+  String errorMessage = '';
 
+  // Performance optimization variables
   late FaceDetector detector;
   late Recognizer recognizer;
+  DateTime _lastRecognitionTime = DateTime.now();
+  final Duration _minRecognitionInterval = Duration(seconds: 1);
+  final Stopwatch _performanceStopwatch = Stopwatch();
 
   @override
   void initState() {
@@ -86,22 +92,32 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         await _initializeApp();
       } else {
         customdialog?.dismiss();
-        showToast("Please grant all permissions to use this app.");
+        showToast("Please grant all permissions to use this app.",Colors.red);
       }
     });
   }
 
   Future<void> _initializeApp() async {
+    _performanceStopwatch.start();
+
+    // Optimized face detector configuration
     detector = FaceDetector(
       options: FaceDetectorOptions(
-        performanceMode: FaceDetectorMode.fast,
-        enableLandmarks: true,
-        enableContours: true,
-        enableClassification: true,
-        minFaceSize: 0.08,
+        performanceMode: FaceDetectorMode.accurate, // Better accuracy
+        enableLandmarks: false, // Disabled for performance
+        enableContours: false,  // Disabled for performance
+        enableClassification: false, // Disabled for performance
+        minFaceSize: 0.15, // Increased for better quality
       ),
     );
+
     recognizer = Recognizer();
+
+    // Load model asynchronously
+    await recognizer.loadModel();
+
+    // Check database status
+    _checkDatabaseStatus();
 
     final locationSuccess = await fetchLocation();
     if (locationSuccess) {
@@ -117,11 +133,20 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     } else {
       if (mounted && Navigator.canPop(context)) {
         customdialog?.dismiss();
-        showToast("Could not fetch location after multiple attempts");
+        showToast("Could not fetch location after multiple attempts",Colors.red);
       }
     }
+
+    _logPerformance('App Initialization', _performanceStopwatch);
   }
 
+  void _checkDatabaseStatus() async {
+    final allRows = await recognizer.dbHelper.queryAllRows();
+    print("Database has ${allRows.length} registered faces");
+    for (final row in allRows) {
+      print("Registered: ${row[DatabaseHelper.columnName]}");
+    }
+  }
   Future<bool> _checkPermissions() async {
     try {
       final List<Permission> permissions = [
@@ -161,26 +186,34 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   }
 
   Future<bool> initializeCamera() async {
-    controller = CameraController(description, ResolutionPreset.high);
+    final stopwatch = Stopwatch()..start();
+
+    controller = CameraController(
+      description,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      // Add this for Android to disable mirroring
+      imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.yuv420 : null,
+    );
+
     try {
       await controller.initialize();
+
+      // Disable mirroring for front camera
+      if (camDirec == CameraLensDirection.front) {
+        await controller.setDescription(description);
+      }
+
       if (!mounted) return false;
 
       controller.startImageStream((image) {
-        if (!isBusy) {
+        if (!isBusy && mounted) {
           isBusy = true;
-          frameSkipCount++;
-          if (frameSkipCount % 5 == 0) {
-            frameSkipCount = 0;
-            print('Image processed');
-            doFaceDetectionOnFrame(image);
-          } else {
-            isBusy = false;
-          }
+          Future.microtask(() => doFaceDetectionOnFrame(image));
         }
       });
-
       _incrementSuccessCounter();
+      _logPerformance('Camera Initialization', stopwatch);
       return true;
     } catch (e) {
       print("Camera initialization error: $e");
@@ -257,13 +290,9 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     successCounter++;
     if (successCounter == 2) {
       if (customdialog != null) {
-        // if (Navigator.canPop(context)) {
-        //     WidgetsBinding.instance.addPostFrameCallback((_) {
-        //       customdialog?.dismiss();
-        //     });
-        //   }
+        // Dismiss dialog if needed
       }
-    } else {}
+    }
   }
 
   Future<void> _getDeviceInfo() async {
@@ -293,82 +322,280 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   @override
   void dispose() {
     _isDisposed = true;
+
+    // Cancel all timers
     _recognitionTimer?.cancel();
     _locationUpdateTimer?.cancel();
+    _locationCompleter?.complete();
+
+    // Dispose resources properly
+    controller?.stopImageStream();
     controller?.dispose();
+    detector.close();
+    recognizer.dispose();
     _locationService.stopLocationUpdates();
+
+    // Clear large data
+    recognitions.clear();
+    _scanResults = null;
+
+    _performanceStopwatch.stop();
+
     super.dispose();
   }
 
   dynamic _scanResults;
-  CameraImage? frame;
 
   Future<void> doFaceDetectionOnFrame(CameraImage image) async {
-    final InputImage inputImage = getInputImage(image);
-    final List<Face> faces = await detector.processImage(inputImage);
-    print("Faces detected: ${faces.length}");
-    print('Faces: ${faces.length}');
-    await performFaceRecognition(faces, image);
-  }
+    final stopwatch = Stopwatch()..start();
 
-  img.Image? image;
+    // Reduce frame skipping for smoother canvas updates
+    frameSkipCount++;
+    if (frameSkipCount % 2 != 0) { // Process every 2nd frame instead of 6th
+      isBusy = false;
+      return;
+    }
 
-  // REMOVED: Permission check - we'll handle it in sendData response instead
+    try {
+      final InputImage inputImage = getInputImage(image);
+      final List<Face> faces = await detector.processImage(inputImage);
 
-  // MODIFIED: Perform Face Recognition - simplified without permission check
-  Future<void> performFaceRecognition(List<Face> faces, CameraImage image) async {
-    recognitions.clear();
-
-    img.Image convertedImage = convertYUV420ToImage(image);
-    img.Image rotatedImage = img.copyRotate(
-      convertedImage,
-      angle: camDirec == CameraLensDirection.front ? 270 : 90,
-    );
-
-    for (Face face in faces) {
-      if (faces.length == 1) {
-        Rect faceRect = face.boundingBox;
-
-        img.Image croppedFace = img.copyCrop(
-          rotatedImage,
-          x: faceRect.left.toInt(),
-          y: faceRect.top.toInt(),
-          width: faceRect.width.toInt(),
-          height: faceRect.height.toInt(),
-        );
-
-        recognition = recognizer.recognize(croppedFace, face.boundingBox);
-
-        if (recognition.distance > 1) {
-          recognition.name = "Not Recognized";
-          if (!isErrorRecognizedTimeCheck) {
-            errorMessage = 'Face not recognized';
-            onNotRecognized();
-            username = recognition.name;
-            _officialID = "0000000000";
-          }
+      // Update canvas immediately with detected faces
+      if (faces.isNotEmpty) {
+        // Update recognition results immediately for smooth canvas rendering
+        if (mounted) {
+          setState(() {
+            // Keep existing recognition data but update face positions
+            if (recognitions.isNotEmpty && faces.length == 1) {
+              recognitions[0].location = faces.first.boundingBox;
+            } else if (recognitions.isEmpty) {
+              // Create temporary recognition for smooth canvas
+              // Recognition(name, location, embedding, distance)
+              recognitions = [
+                Recognition(
+                  "Detecting...",
+                  faces.first.boundingBox,
+                  [],
+                  1.0,
+                )
+              ];
+            }
+            _scanResults = recognitions;
+          });
         }
-        recognitions.add(recognition);
 
-        if (recognition.name != "Not Recognized") {
-          if (!isRecognizedTimeCheck) {
-            // Get user info and proceed directly to recognition
-            username = recognition.name;
-            _officialID = await sharedPrefsHelper.getOfficialID();
-
-            // Proceed with recognition - permission will be checked in sendData
-            onRecognized();
+        // Only perform full recognition on good quality faces
+        if (faces.length == 1 && _isGoodQualityFace(faces.first)) {
+          await performFaceRecognitionOptimized(faces, image);
+        }
+      } else {
+        // Clear previous results if no face detected
+        if (recognitions.isNotEmpty) {
+          recognitions.clear();
+          if (mounted) {
+            setState(() {
+              _scanResults = recognitions;
+            });
           }
         }
       }
+    } catch (e) {
+      print("Face detection error: $e");
+    } finally {
+      isBusy = false;
     }
 
-    if (!_isDisposed && mounted) {
-      setState(() {
-        isBusy = false;
-        _scanResults = recognitions;
-      });
+    _logPerformance('Face Detection', stopwatch);
+  }
+
+// Optimized recognition that doesn't block canvas updates
+  Future<void> performFaceRecognitionOptimized(List<Face> faces, CameraImage image) async {
+    // Throttle full recognition, but not canvas updates
+    final now = DateTime.now();
+    if (now.difference(_lastRecognitionTime) < Duration(milliseconds: 500)) {
+      // Still update face position even if skipping recognition
+      return;
     }
+    _lastRecognitionTime = now;
+
+    // Early return if already processing recognition
+    if (isRecognizedTimeCheck || isErrorRecognizedTimeCheck) {
+      return;
+    }
+
+    try {
+      final croppedFace = await _getOptimizedCroppedFace(faces.first, image);
+      if (croppedFace == null) {
+        return;
+      }
+
+      recognition = recognizer.recognize(croppedFace, faces.first.boundingBox);
+
+      print("Recognition - Name: ${recognition.name}, Distance: ${recognition.distance}");
+
+      // Update UI with recognition results
+      if (mounted) {
+        setState(() {
+          recognitions = [recognition];
+          _scanResults = recognitions;
+        });
+      }
+
+      // Handle recognition
+      await _handleRecognitionWithThreshold(recognition);
+
+    } catch (e) {
+      print("Recognition error: $e");
+    }
+  }
+
+  // Check if face is good quality for recognition
+  bool _isGoodQualityFace(Face face) {
+    final rect = face.boundingBox;
+
+    // Check face size (should be reasonably large)
+    if (rect.width < 100 || rect.height < 100) {
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<img.Image?> _getOptimizedCroppedFace(Face face, CameraImage image) async {
+    try {
+      final convertedImage = convertYUV420ToImage(image);
+
+      // Only rotate if necessary
+      final processedImage = camDirec == CameraLensDirection.front
+          ? img.copyRotate(convertedImage, angle: 270)
+          : convertedImage;
+
+      final faceRect = face.boundingBox;
+
+      // Add padding to the face crop for better recognition
+      final padding = 20;
+      final x = (faceRect.left - padding).clamp(0, processedImage.width - 1).toInt();
+      final y = (faceRect.top - padding).clamp(0, processedImage.height - 1).toInt();
+      final width = (faceRect.width + padding * 2).clamp(1, processedImage.width - x).toInt();
+      final height = (faceRect.height + padding * 2).clamp(1, processedImage.height - y).toInt();
+
+      return img.copyCrop(processedImage, x: x, y: y, width: width, height: height);
+    } catch (e) {
+      print("Face cropping error: $e");
+      return null;
+    }
+  }
+
+  Future<void> _handleRecognitionWithThreshold(Recognition recognition) async {
+    // Use a more lenient threshold for better accuracy
+    final recognitionThreshold = 1.0; // Adjust this based on your model
+
+    if (recognition.distance > recognitionThreshold) {
+      // Face not recognized
+      if (!isErrorRecognizedTimeCheck) {
+        setState(() {
+          username = "Unknown";
+          _officialID = "Unknown";
+          errorMessage = 'Face not recognized';
+          isErrorRecognized = true;
+          isErrorRecognizedTimeCheck = true;
+        });
+
+        _recognitionTimer = Timer(Duration(seconds: 2), () {
+          if (!_isDisposed && mounted) {
+            setState(() {
+              isErrorRecognized = false;
+              isErrorRecognizedTimeCheck = false;
+            });
+          }
+        });
+      }
+      return;
+    } else {
+      // Face recognized - get user info
+      username = recognition.name;
+      _officialID = await sharedPrefsHelper.getOfficialID();
+
+      // Call sendData to check permissions via API
+      await _checkPermissionAndSendData();
+    }
+  }
+
+  Future<void> _checkPermissionAndSendData() async {
+    print("Checking permissions and sending data...");
+    print("Username: $username");
+    print("Official ID: $_officialID");
+    if (!isRecognizedTimeCheck && !_isDisposed) {
+      setState(() {
+        isRecognizedTimeCheck = true;
+      });
+      // sendData(
+      //   onSuccess: (bool success) {
+      //     if (!_isDisposed && mounted) {
+      //       setState(() {
+      //         isRecognized = true;
+      //       });
+      //     }
+      //     _locationService.stopLocationUpdates();
+      //
+      //     // Navigate after showing success message
+      //     //Future.delayed(Duration(seconds: 1), () {
+      //     if (mounted) {
+      //       Navigator.pushReplacement(
+      //         context,
+      //         MaterialPageRoute(builder: (context) => Navigation_Class()),
+      //       );
+      //       showToast("Attendance submitted successfully!",Colors.green);
+      //     }
+      //     // });
+      //   },
+      //   onError: (String error) {
+      //     print('Error occurred: $error');
+      //     _locationService.stopLocationUpdates();
+      //     if (!_isDisposed && mounted) {
+      //       setState(() {
+      //         isRecognizedTimeCheck = false;
+      //         isErrorRecognized = true;
+      //         isErrorRecognizedTimeCheck = true;
+      //
+      //         // Set appropriate error message based on error type
+      //         if (error.contains('Permission Denied') ||
+      //             error.contains('"message":"Permission Denied!"')) {
+      //           errorMessage = 'Permission Denied!';
+      //           // Keep the recognized username and ID for permission denied cases
+      //         } else if (error.contains('not allow to remote check in') ||
+      //             error.contains('are not allow to remote check in')) {
+      //           errorMessage = 'Remote attendance not allowed';
+      //           // Keep the recognized username and ID
+      //         } else {
+      //           // For other errors
+      //           errorMessage = error;
+      //         }
+      //       });
+      //     }
+      //
+      //     _recognitionTimer?.cancel();
+      //     _recognitionTimer = Timer(Duration(seconds: 2), () {
+      //       if (!_isDisposed && mounted) {
+      //         setState(() {
+      //           isErrorRecognized = false;
+      //           isErrorRecognizedTimeCheck = false;
+      //           errorMessage = '';
+      //         });
+      //       }
+      //     });
+      //   },
+      // );
+    }
+  }
+
+  // Performance logging
+  void _logPerformance(String operation, Stopwatch stopwatch) {
+    final elapsed = stopwatch.elapsedMilliseconds;
+    if (elapsed > 100) {
+      print('PERFORMANCE: $operation took ${elapsed}ms');
+    }
+    stopwatch.reset();
   }
 
   img.Image convertYUV420ToImage(CameraImage cameraImage) {
@@ -410,13 +637,6 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
 
   InputImage getInputImage(CameraImage cameraImage) {
     try {
-      print('--- InputImage Debug ---');
-      print('cameraImage.format.raw: ${cameraImage.format.raw}');
-      print('cameraImage.width: ${cameraImage.width}');
-      print('cameraImage.height: ${cameraImage.height}');
-      print('cameraImage.planes.first.bytesPerRow: ${cameraImage.planes.first.bytesPerRow}');
-      print('description.sensorOrientation: ${description.sensorOrientation}');
-
       final format = InputImageFormatValue.fromRawValue(cameraImage.format.raw) ??
           (Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888);
 
@@ -527,9 +747,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   Widget build(BuildContext context) {
     List<Widget> stackChildren = [];
     size = MediaQuery.of(context).size;
-
     if (controller != null) {
-      // UNIVERSAL CAMERA PREVIEW FIX - Works on all devices
       stackChildren.add(
         Positioned(
           top: 0.0,
@@ -564,7 +782,6 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         ),
       );
 
-      // Face detection overlay
       stackChildren.add(
         Positioned(
           top: 0.0,
@@ -574,70 +791,6 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
           child: buildResult(),
         ),
       );
-      // Success/Error messages handling
-      if (isRecognizedTimeCheck && !dataSendChecker) {
-        dataSendChecker = true;
-        Future.microtask(() {
-          sendData(
-            onSuccess: (bool success) {
-              if (!_isDisposed && mounted) {
-                setState(() {
-                  isCheckingPermission = false;
-                  isRecognized = true;
-                });
-              }
-              _locationService.stopLocationUpdates();
-              Future.delayed(Duration(seconds: 2), () {
-                if (mounted) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => Navigation_Class()),
-                  );
-                  showToast("Attendance submitted successfully!");
-                }
-              });
-            },
-            onError: (String error) {
-              print('Error occurred: $error');
-              _locationService.stopLocationUpdates();
-              dataSendChecker = false;
-              if (!_isDisposed && mounted) {
-                setState(() {
-                  isCheckingPermission = false;
-                  isRecognized = false;
-                  isRecognizedTimeCheck = false;
-                  isErrorRecognized = true;
-                  isErrorRecognizedTimeCheck = true;
-                });
-              }
-              if (error.contains('Permission Denied') ||
-                  error.contains('not allow to remote check in') ||
-                  error.contains('are not allow to remote check in')) {
-                errorMessage = 'Remote attendance not allowed';
-              } else if (error.contains('message')) {
-                try {
-                  final jsonError = jsonDecode(error);
-                  errorMessage = jsonError['message'] ?? 'Request failed';
-                } catch (e) {
-                  errorMessage = 'Request failed';
-                }
-              } else {
-                errorMessage = 'Request failed: Connection error';
-              }
-              _recognitionTimer?.cancel();
-              _recognitionTimer = Timer(Duration(seconds: 5), () {
-                if (!_isDisposed && mounted) {
-                  setState(() {
-                    isErrorRecognized = false;
-                    isErrorRecognizedTimeCheck = false;
-                    errorMessage = '';
-                  });
-                }
-              });
-            },
-          );
-        });
-      }
 
       if (isRecognized) {
         stackChildren.add(buildSuccessMessage());
@@ -648,33 +801,32 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
 
     return SafeArea(
       child: Scaffold(
-        backgroundColor: Colors.blue,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-
-            SizedBox(height: 10),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(15),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
+        backgroundColor: Colors.white,
+        body: LayoutBuilder(builder: (context, constraints) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(15),
                   ),
-                  child: Stack(
-                    children: stackChildren,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                    ),
+                    child: Stack(
+                      children: stackChildren,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     );
   }
-
 
   Widget buildSuccessMessage() {
     return Positioned(
@@ -716,18 +868,21 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
                       Text(
                         'Successfully data updated',
                         style: TextStyle(
+                          color: Colors.white,
                           fontSize: 16.0,
                         ),
                       ),
                       Text(
                         'Name: $username',
                         style: TextStyle(
+                          color: Colors.white,
                           fontSize: 16.0,
                         ),
                       ),
                       Text(
                         'ID: $_officialID',
                         style: TextStyle(
+                          color: Colors.white,
                           fontSize: 16.0,
                         ),
                       ),
@@ -741,6 +896,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
               bottom: 0,
               child: Icon(
                 Icons.check_circle_outline,
+                color: Colors.white,
                 size: 24.0,
               ),
             ),
@@ -750,53 +906,103 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     );
   }
 
-  // NEW: Loading message while verifying permission
-  Widget buildLoadingMessage() {
+  Widget buildErrorMessage() {
+    bool isUnknownFace = username == "Unknown";
+    bool isPermissionDenied = errorMessage.contains('Permission Denied') ||
+        errorMessage.contains('remote attendance not allowed');
+
+    String title = isUnknownFace ? 'Face Not Recognized'
+        : isPermissionDenied ? 'Permission Denied'
+        : 'Error';
+
+    String subtitle = errorMessage;
+
     return Positioned(
       bottom: 0.0,
       left: 0.0,
       width: size.width,
       child: Container(
         margin: EdgeInsets.all(5),
-        padding: EdgeInsets.all(15),
+        padding: EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.blue.shade700,
+          color: isUnknownFace ? Colors.red.shade700 :
+          isPermissionDenied ? Colors.orange.shade700 :
+          Colors.red,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(
-              width: 30,
-              height: 30,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            Container(
+              width: 50,
+              height: 60,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(5),
+                image: (!isUnknownFace && _imagePath != null && !isPermissionDenied)
+                    ? DecorationImage(
+                  image: FileImage(File(_imagePath!)),
+                  fit: BoxFit.cover,
+                )
+                    : null,
+                color: (isUnknownFace || _imagePath == null || isPermissionDenied)
+                    ? Colors.grey[300] : null,
               ),
+              child: (isUnknownFace || _imagePath == null || isPermissionDenied)
+                  ? Icon(
+                isUnknownFace ? Icons.person_off
+                    : isPermissionDenied ? Icons.block
+                    : Icons.error_outline,
+                size: 40,
+                color: Colors.yellow.shade200,
+              )
+                  : null,
             ),
-            SizedBox(width: 15),
+            SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Verifying attendance...',
+                    title,
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 16.0,
                     ),
                   ),
-                  SizedBox(height: 4),
                   Text(
-                    'Name: $username',
+                    subtitle,
                     style: TextStyle(
-                      color: Colors.white,
+                      color:Colors.white,
                       fontSize: 14.0,
                     ),
                   ),
+                  // Show name and ID only for permission denied cases, not for unknown faces
+                  if (!isUnknownFace && username != "Unknown" && username != null) ...[
+                    SizedBox(height: 4),
+                    Text(
+                      'Name: $username',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.0,
+                      ),
+                    ),
+                    Text(
+                      'ID: $_officialID',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.0,
+                      ),
+                    ),
+                  ],
                 ],
               ),
+            ),
+            Icon(
+              isUnknownFace ? Icons.person_off
+                  : isPermissionDenied ? Icons.block
+                  : Icons.error_outline,
+              color: Colors.yellow.shade200,
+              size: 24.0,
             ),
           ],
         ),
@@ -804,149 +1010,19 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     );
   }
 
-  // MODIFIED: Better error message with specific error types and full error text
-  Widget buildErrorMessage() {
-    bool isUnknownFace = username == "Not Recognized";
-    String title = isUnknownFace ? 'Face Not Recognized' : 'Permission Denied';
-    String subtitle = isUnknownFace
-        ? 'Unknown person detected'
-        : errorMessage.isNotEmpty
-        ? errorMessage
-        : 'Remote attendance not allowed';
-
-    return Positioned(
-      bottom: 0.0,
-      left: 0.0,
-      width: size.width,
-      child: Container(
-        margin: EdgeInsets.all(8), // Responsive margin
-        padding: EdgeInsets.all(12), // Responsive padding
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Calculate responsive sizes based on screen width
-            final bool isSmallScreen = constraints.maxWidth < 360;
-            final bool isLargeScreen = constraints.maxWidth > 600;
-
-            // Responsive dimensions
-            final double imageSize = isSmallScreen ? 70 : (isLargeScreen ? 90 : 60);
-            final double imageHeight = isSmallScreen ? 80 : (isLargeScreen ? 100 : 90);
-            final double iconSize = isSmallScreen ? 24 : (isLargeScreen ? 35 : 30);
-            final double rightIconSize = isSmallScreen ? 20 : (isLargeScreen ? 28 : 24);
-            final double spacing = isSmallScreen ? 6 : (isLargeScreen ? 16 : 10);
-            final double titleFontSize = isSmallScreen ? 14 : (isLargeScreen ? 18 : 16);
-            final double textFontSize = isSmallScreen ? 12 : (isLargeScreen ? 16 : 14);
-            final double detailFontSize = isSmallScreen ? 11 : (isLargeScreen ? 15 : 14);
-
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Image/Icon Container
-                Container(
-                  width: imageSize,
-                  height: imageHeight,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
-                    image: (!isUnknownFace && _imagePath != null)
-                        ? DecorationImage(
-                      image: FileImage(File(_imagePath!)),
-                      fit: BoxFit.cover,
-                    )
-                        : null,
-                    color: (isUnknownFace || _imagePath == null) ? Colors.grey[300] : null,
-                  ),
-                  child: (isUnknownFace || _imagePath == null)
-                      ? Icon(
-                    isUnknownFace ? Icons.person_off : Icons.block,
-                    size: iconSize,
-                    color: Colors.white,
-                  )
-                      : null,
-                ),
-
-                SizedBox(width: spacing),
-
-                // Text Content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: titleFontSize,
-                          height: 1.2,
-                        ),
-                      ),
-
-                      SizedBox(height: isSmallScreen ? 2 : 4),
-
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: textFontSize,
-                          height: 1.3,
-                        ),
-                        maxLines: isSmallScreen ? 2 : 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-
-                      if (!isUnknownFace) ...[
-                        SizedBox(height: isSmallScreen ? 2 : 6),
-
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'Name: $username',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: detailFontSize,
-                            ),
-                          ),
-                        ),
-
-                        SizedBox(height: 2),
-
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'ID: $_officialID',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: detailFontSize,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                SizedBox(width: spacing - 2),
-
-                // Right Icon
-                Icon(
-                  isUnknownFace ? Icons.error_outline : Icons.block,
-                  color: Colors.yellow.shade200,
-                  size: rightIconSize,
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
   void onRecognized() {
     if (!isRecognizedTimeCheck && !_isDisposed) {
       setState(() {
+        isRecognized = true;
         isRecognizedTimeCheck = true;
-        isCheckingPermission = true; // Show loading immediately
+      });
+      _recognitionTimer = Timer(Duration(seconds: 1), () {
+        if (!_isDisposed && mounted) {
+          setState(() {
+            isRecognized = false;
+            isRecognizedTimeCheck = false;
+          });
+        }
       });
     }
   }
@@ -957,7 +1033,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         isErrorRecognized = true;
         isErrorRecognizedTimeCheck = true;
       });
-      _recognitionTimer = Timer(Duration(seconds: 2), () {
+      _recognitionTimer = Timer(Duration(seconds: 1), () {
         if (!_isDisposed && mounted) {
           setState(() {
             isErrorRecognized = false;
@@ -979,88 +1055,102 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     });
   }
 
-  Future<void> sendData({
-    required Function(bool success) onSuccess,
-    required Function(String error) onError,
-  }) async {
-    print("Here Send $latitude");
-    if (latitude != null && longitude != null) {
-      _locationService.stopLocationUpdates();
+  // Future<void> sendData({
+  //   required Function(bool success) onSuccess,
+  //   required Function(String error) onError,
+  // }) async {
+  //   print("Here Send $latitude");
+  //   if (latitude != null && longitude != null) {
+  //     _locationService.stopLocationUpdates();
+  //
+  //     String? token = await variables.getAuthToken();
+  //     int? userId = await variables.getUserID();
+  //
+  //     DateTime now = DateTime.now();
+  //     String formattedDate = DateFormat('yyyy-MM-dd').format(now);
+  //     String formattedTime = DateFormat('HH:mm:ss').format(now);
+  //
+  //     print('Date: $formattedDate');
+  //     print('Time: $formattedTime');
+  //
+  //     Map<String, String> headers = {
+  //       'Content-Type': 'application/json',
+  //       'Authorization': 'Bearer $token',
+  //     };
+  //
+  //     Map<String, dynamic> body = {
+  //       "date": formattedDate,
+  //       "time": formattedTime,
+  //       "device": deviceName,
+  //       "model": deviceModel,
+  //       "latitude": latitude,
+  //       "longitude": longitude,
+  //       "employee": userId,
+  //     };
+  //
+  //     final client = http.Client();
+  //     try {
+  //       final response = await http
+  //           .post(
+  //         Uri.parse('${variables.base}/api/attendance/add-remote-log/'),
+  //         headers: headers,
+  //         body: jsonEncode(body),
+  //       )
+  //           .timeout(Duration(seconds: 10));
+  //
+  //       print("Response:${response.statusCode}");
+  //
+  //       if (response.statusCode == 200 || response.statusCode == 201) {
+  //         print('Remote Attendance Success: ${response.body}');
+  //         onSuccess(true);
+  //         latitude = '';
+  //         longitude = '';
+  //       } else {
+  //         String errorResponse = response.body;
+  //         print('Error: ${response.statusCode}, $errorResponse');
+  //
+  //         // Check for permission denied error
+  //         if (errorResponse.contains('Permission Denied') ||
+  //             errorResponse.contains('"message":"Permission Denied!"')) {
+  //           onError("PERMISSION_DENIED");
+  //         }
+  //         // Check for other specific errors
+  //         else if (errorResponse.contains('not allow to remote check in') ||
+  //             errorResponse.contains('are not allow to remote check in')) {
+  //           onError("REMOTE_CHECKIN_NOT_ALLOWED");
+  //         }
+  //         // General API error
+  //         else {
+  //           onError(errorResponse);
+  //         }
+  //
+  //         latitude = '';
+  //         longitude = '';
+  //       }
+  //     } catch (e) {
+  //       if (e is TimeoutException) {
+  //         print("Request timed out.");
+  //         onError("Request timed out");
+  //       } else {
+  //         print("Exception: $e");
+  //         onError("Exception: $e");
+  //       }
+  //     } finally {
+  //       client.close();
+  //     }
+  //   } else {
+  //     showToast("Location not found",Colors.red);
+  //     onError("Location not found");
+  //   }
+  // }
 
-      String? token ="";
-      final String? url = "await variables.getRemote_AttendaceRequestAPI()";
-      int? userId = 0;
-
-      DateTime now = DateTime.now();
-      String formattedDate = DateFormat('yyyy-MM-dd').format(now);
-      String formattedTime = DateFormat('HH:mm:ss').format(now);
-
-      print('Date: $formattedDate');
-      print('Time: $formattedTime');
-
-      print("Request:$formattedDate");
-
-      Map<String, String> headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
-
-      Map<String, dynamic> body = {
-        "date": formattedDate,
-        "time": formattedTime,
-        "device": deviceName,
-        "model": deviceModel,
-        "latitude": latitude,
-        "longitude": longitude,
-        "employee": userId,
-      };
-
-      final client = http.Client();
-      try {
-        final response = await http
-            .post(
-          Uri.parse(url!),
-          headers: headers,
-          body: jsonEncode(body),
-        )
-            .timeout(Duration(seconds: 10));
-
-        print("Response:${response.statusCode}");
-        print("API URL :${url}");
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          print('Success: ${response.body}');
-          onSuccess(true);
-          latitude = '';
-          longitude = '';
-        } else {
-          onError(response.body);
-          print('Error: ${response.statusCode}, ${response.body}');
-          latitude = '';
-          longitude = '';
-        }
-      } catch (e) {
-        if (e is TimeoutException) {
-          print("Request timed out.");
-          onError("Request timed out");
-        } else {
-          print("Exception: $e");
-          onError("Exception: $e");
-        }
-      } finally {
-        client.close();
-      }
-    } else {
-      showToast("Location not found");
-    }
-  }
-
-  void showToast(String message) {
+  void showToast(String message,Color bgColor) {
     Fluttertoast.showToast(
       msg: message,
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.CENTER,
       timeInSecForIosWeb: 2,
-      backgroundColor: Colors.red,
+      backgroundColor: bgColor,
       textColor: Colors.white,
       fontSize: 16.0,
     );
@@ -1073,7 +1163,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         print("Internet= $success, Messages $message");
         if (customdialog != null) {
           customdialog!.dismiss();
-          showToast("Poor connection ");
+          showToast("Poor connection ",Colors.red);
         }
         isConnected = false;
       } else {
@@ -1097,14 +1187,12 @@ class FaceDetectorPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double scaleX = size.width / absoluteImageSize.width;
     final double scaleY = size.height / absoluteImageSize.height;
-
     final Paint boxPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
       ..color = Colors.green;
 
     for (Recognition face in faces) {
-      // Mirror the box coordinates for front camera to match preview
       double left = camDire2 == CameraLensDirection.front
           ? (absoluteImageSize.width - face.location.right) * scaleX
           : face.location.left * scaleX;
@@ -1119,7 +1207,9 @@ class FaceDetectorPainter extends CustomPainter {
 
       TextSpan span = TextSpan(
           style: const TextStyle(color: Colors.white, fontSize: 20),
-          text: "${face.name}  ");
+          text: "${face.name}");
+
+
       TextPainter tp = TextPainter(
           text: span,
           textAlign: TextAlign.center,
@@ -1134,5 +1224,4 @@ class FaceDetectorPainter extends CustomPainter {
   bool shouldRepaint(FaceDetectorPainter oldDelegate) {
     return true;
   }
-
 }

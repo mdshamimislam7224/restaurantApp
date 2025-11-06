@@ -29,7 +29,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   String staffId = '';
   String _staffJoningDate = '';
   List<Widget>? _pages;
-
+  bool _isLoading = true;
 
   Future<void> _loadUserData() async {
     final staffData = await _sharedPrefsHelper.getStaffLoginData();
@@ -40,9 +40,9 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       staffId = staffData['staff_id'] ?? '';
       _staffStatus = staffData['status'] ?? '';
       _staffJoningDate = staffData['joiningdate'] ?? '';
+      _isLoading = false;
     });
 
-    // ✅ Initialize _pages AFTER data loaded
     setState(() {
       _pages = [
         CashCalculationScreen(),
@@ -61,37 +61,37 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       ];
     });
   }
+
   final List<String> _pageTitles = [
     "Dashboard",
     'Sell Management',
     'Costing Management',
-     'Profile View',
-    "Payment Record View",
-    'Add Attendance',
-     'Attendance View',
+    'Profile View',
+    "Payment View",
+    'Attendance',
+    'Staff Payment View',
     'Staff List',
     'Food List Management',
     'Sales Dashboard'
-
   ];
 
   final List<Color> _appBarColors = [
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Colors.teal,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue,
+    Colors.blue
   ];
+
   void _onSelectItem(int index) {
     setState(() {
       _selectedDrawerIndex = index;
     });
-
     Navigator.pop(context);
   }
 
@@ -104,9 +104,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
             alignment: Alignment.topRight,
             child: IconButton(
               icon: Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
             ),
           ),
           Align(
@@ -133,7 +131,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
                       style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      _staffPosition.isNotEmpty ? "("+_staffStatus+")" : _staffStatus,
+                      _staffPosition.isNotEmpty ? "($_staffStatus)" : _staffStatus,
                       style: TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ],
@@ -157,6 +155,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       ),
     );
   }
+
   Color _getRoleColor(String role) {
     switch (role.toLowerCase()) {
       case 'admin':
@@ -167,112 +166,148 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         return Colors.grey;
     }
   }
+
   bool _hasAccess(String requiredRole) {
     if (_userRole.isEmpty) return false;
 
-    // Admin has access to everything
-    if (_userRole.toLowerCase() == 'admin') return true;
+    // Convert both to lowercase for consistent comparison
+    String userRoleLower = _userRole.toLowerCase();
+    String requiredRoleLower = requiredRole.toLowerCase();
+
+    // Admin has access to most features but NOT to Profile View and Payment View
+    if (userRoleLower == 'admin') {
+      final adminHiddenFeatures = [
+        'payment view',
+      ];
+      return !adminHiddenFeatures.contains(requiredRoleLower);
+    }
 
     // Staff only has access to specific features
-    if (_userRole.toLowerCase() == 'staff') {
-      // Define what staff can access
+    if (userRoleLower == 'staff') {
       final staffAccessibleFeatures = [
-        'dashboard',
+        "dashboard",
         'sell management',
         'costing management',
-        'Profile View',
-        "Payment Record View",
-        'Add Attendance',
-        'Attendance View',
-        // Add other features that staff should have access to
+        'profile view',
+        "payment view",
+        'attendance',
       ];
-      return staffAccessibleFeatures.contains(requiredRole.toLowerCase());
+      return staffAccessibleFeatures.contains(requiredRoleLower);
     }
 
     return false;
   }
+
   List<Widget> _getDrawerItems() {
     final drawerItems = <Widget>[
       _buildDrawerHeader(context),
-
-      // Dashboard - Accessible to all
-      ListTile(
-        leading: Icon(Icons.home),
-        title: Text('Dashboard'),
-        onTap: () => _onSelectItem(0),
-      ),
-
-      // Sell Management - Accessible to all
-      ListTile(
-        leading: Icon(Icons.category),
-        title: Text('Sell Management'),
-        onTap: () => _onSelectItem(1),
-      ),
-
-      // Costing Management - Accessible to all
-      ListTile(
-        leading: Icon(Icons.person),
-        title: Text('Costing Management'),
-        onTap: () => _onSelectItem(2),
-      ),
     ];
 
-    // Staff Management - Only for Admin
-    if (_hasAccess('staff management')) {
+    print('Building drawer for user: $_userRole');
+
+    // Check each menu item
+    if (_hasAccess('Dashboard')) {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.restaurant_menu),
-          title: Text('Staff Management'),
+          leading: Icon(Icons.dashboard),
+          title: Text('Dashboard'),
+          onTap: () => _onSelectItem(0),
+        ),
+      );
+    }
+
+    if (_hasAccess('Sell Management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.shopping_cart),
+          title: Text('Sell Management'),
+          onTap: () => _onSelectItem(1),
+        ),
+      );
+    }
+
+    if (_hasAccess('Costing Management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.calculate),
+          title: Text('Costing Management'),
+          onTap: () => _onSelectItem(2),
+        ),
+      );
+    }
+
+    if (_hasAccess('Profile View')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.person),
+          title: Text('Profile View'),
           onTap: () => _onSelectItem(3),
         ),
       );
     }
 
-    // Salary Records - Only for Admin
-    if (_hasAccess('salary record')) {
+    if (_hasAccess('Payment View')) {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.calculate_outlined),
-          title: Text('Salary Records'),
+          leading: Icon(Icons.payment),
+          title: Text('Payment View'),
           onTap: () => _onSelectItem(4),
         ),
       );
     }
 
-    // Food List Management - Only for Admin
-    if (_hasAccess('food list management')) {
+    if (_hasAccess('Attendance')) {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.person_add),
-          title: Text('Add Food List'),
+          leading: Icon(Icons.access_time),
+          title: Text('Attendance'),
           onTap: () => _onSelectItem(5),
         ),
       );
     }
 
-    // Staff Payment - Only for Admin
-    if (_hasAccess('staff payment')) {
+    // Admin-only features
+    if (_hasAccess('Staff Payment View')) {
       drawerItems.add(
         ListTile(
           leading: Icon(Icons.payment),
-          title: Text('Staff Payment'),
+          title: Text('Staff Payment View'),
           onTap: () => _onSelectItem(6),
         ),
       );
     }
 
-    // Sales Dashboard - Only for Admin
-    if (_hasAccess('sales dashboard')) {
+    if (_hasAccess('Staff List')) {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.dashboard),
-          title: Text('Sales Dashboard'),
+          leading: Icon(Icons.people),
+          title: Text('Staff List'),
           onTap: () => _onSelectItem(7),
         ),
       );
     }
 
-    // Add logout button at the end
+    if (_hasAccess('Food List Management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.restaurant_menu),
+          title: Text('Food List Management'),
+          onTap: () => _onSelectItem(8),
+        ),
+      );
+    }
+
+    if (_hasAccess('Sales Dashboard')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.analytics),
+          title: Text('Sales Dashboard'),
+          onTap: () => _onSelectItem(9),
+        ),
+      );
+    }
+
+    // Add logout button
     drawerItems.addAll([
       Divider(),
       ListTile(
@@ -282,19 +317,17 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       ),
     ]);
 
+    print('Total drawer items: ${drawerItems.length}');
     return drawerItems;
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // 🕒 Show loading indicator until pages are ready
-    if (_pages == null) {
+    if (_isLoading || _pages == null) {
       return Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: _selectedDrawerIndex < _appBarColors.length
@@ -309,13 +342,14 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         leading: _selectedDrawerIndex != 0
             ? IconButton(
           icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            setState(() {
-              _selectedDrawerIndex = 0;
-            });
-          },
+          onPressed: () => setState(() { _selectedDrawerIndex = 0; }),
         )
-            : null,
+            : Builder(
+          builder: (context) => IconButton(
+            icon: Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.only(
             bottomLeft: Radius.circular(20),
@@ -323,18 +357,15 @@ class _Navigation_ClassState extends State<Navigation_Class> {
           ),
         ),
       ),
-      drawer: _selectedDrawerIndex == 0
-          ? Drawer(
+      drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: _getDrawerItems(),
         ),
-      )
-          : null,
+      ),
       body: _pages![_selectedDrawerIndex],
     );
   }
-
 
   @override
   void initState() {
@@ -351,11 +382,10 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     final allRows = await databaseHelper.queryAllRows();
     if (allRows.isNotEmpty) {
       await databaseHelper.deleteUser(staffData['staff_id']?.toString() ?? '');
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffLoginPage()),
-      );
     }
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => StaffLoginPage()),
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => StaffLoginPage()),
     );
   }
-
 }

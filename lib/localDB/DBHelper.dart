@@ -278,7 +278,7 @@ class DBHelper {
   }
 
   static Future<void> updateCostingRecord({
-    required int id,
+    required String id,
     required String date,
     required String type,
     required String description,
@@ -301,7 +301,7 @@ class DBHelper {
   }
 
   static Future<void> updateCostingPaymentStatus({
-    required int id,
+    required String id,
     required String paymentStatus,
   }) async {
     final db = await DBHelper.db;
