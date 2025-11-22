@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:restaurant_inventory/Staff/StaffProfileScreen.dart';
 import 'package:restaurant_inventory/api/apiClass.dart';
 import 'package:restaurant_inventory/showToast/Toast_Message.dart';
 
@@ -38,7 +39,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
 
     try {
       final response = await http.get(
-        Uri.parse('${apiClass.baseUrlStaff}?action=getStaff'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=getStaff'),
       ).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
@@ -83,7 +84,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
     final client = http.Client(); // Create a new HTTP client for this request
     try {
       http.Response response = await client.post(
-        Uri.parse('${apiClass.baseUrlStaff}?action=deleteStaff'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=deleteStaff'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'staffId': staffId.trim()}),
       ).timeout(const Duration(seconds: 30));
@@ -171,6 +172,9 @@ class _StaffListScreenState extends State<StaffListScreen> {
     bool sameAddress = false;
     List<XFile> imagesFileList = [];
     List<XFile> profileImageList = [];
+    String staffStatus = "Deactivate"; // Default status
+    String staffuserRole = "Staff"; // Default status
+
 
     // Error states
     bool nameError = false;
@@ -190,6 +194,100 @@ class _StaffListScreenState extends State<StaffListScreen> {
       builder: (_) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            Widget _buildStatusDropdown() {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Staff Status *",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButton<String>(
+                      value: staffStatus,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      items: const [
+                        DropdownMenuItem(
+                          value: "Active",
+                          child: Text("Active"),
+                        ),
+                        DropdownMenuItem(
+                          value: "Deactivate",
+                          child: Text("Deactivate"),
+                        ),
+                      ],
+                      onChanged: (String? newValue) {
+                        setStateDialog(() {
+                          staffStatus = newValue!;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              );
+            }
+
+            Widget _buildUserRoleDropdown() {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Staff Role *",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButton<String>(
+                      value: staffuserRole,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      items: const [
+                        DropdownMenuItem(
+                          value: "Admin",
+                          child: Text("Admin"),
+                        ),
+                        DropdownMenuItem(
+                          value: "Staff",
+                          child: Text("Staff"),
+                        ),
+                      ],
+                      onChanged: (String? newValue) {
+                        setStateDialog(() {
+                          staffuserRole = newValue!;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              );
+            }
+
             // Validate all required fields
             bool validateForm() {
               setStateDialog(() {
@@ -216,8 +314,6 @@ class _StaffListScreenState extends State<StaffListScreen> {
                 return;
               }
               final dialog = customDialog(context);
-
-
               // --- Start: Prepare Data ---
               final List<Map<String, String>> formattedProfileImages = [];
               final List<Map<String, String>> formattedImages = [];
@@ -253,6 +349,8 @@ class _StaffListScreenState extends State<StaffListScreen> {
                 'email': staffEmailController.text,
                 'guardian_info': staffGuardianInfoController.text,
                 'info': staffInfoController.text,
+                'status': staffStatus, // Add status to the data
+                'userRole': staffuserRole,
                 'profileImage': formattedProfileImages,
                 'imagesData': formattedImages,
               };
@@ -265,7 +363,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
               // ... inside submitData() function ...
               try {
                 http.Response response = await client.post(
-                  Uri.parse('${apiClass.baseUrlStaff}?action=StaffAdd'),
+                  Uri.parse('${apiClass().baseUrlStaff}?action=StaffAdd'),
                   headers: {
                     'Content-Type': 'application/json',
                   },
@@ -458,6 +556,9 @@ class _StaffListScreenState extends State<StaffListScreen> {
                         onChanged: (v) => setStateDialog(() => positionError = v.isEmpty),
                       ),
 
+                      // Staff Status Dropdown
+                      _buildStatusDropdown(),
+
                       // Present Address
                       _buildTextField(
                         label: "Present Address *",
@@ -559,6 +660,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
                         },
                         onChanged: (v) => setStateDialog(() => joinDateError = v.isEmpty),
                       ),
+                      _buildUserRoleDropdown(),
 
                       // Profile Image
                       _buildImageSection(
@@ -609,6 +711,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
       },
     );
   }
+
 
   Widget _buildTextField({
     required String label,
@@ -715,16 +818,22 @@ class _StaffListScreenState extends State<StaffListScreen> {
   Widget _buildStaffItem(Staff staff) {
     return GestureDetector(
           onTap: () {
-            // Navigate to StaffProfileView when the item is tapped
+           // Navigate to StaffProfileView when the item is tapped
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => StaffProfileView(
-                  staff: staff,
-                  onEditPressed: () => _showEditDialog(staff),
-                ),
+                builder: (context) => StaffProfileScreen(staffId: staff.id),
               ),
             );
+            // Navigator.push(
+            //   context,
+            //   MaterialPageRoute(
+            //     builder: (context) => StaffProfileView(
+            //       staff: staff,
+            //       onEditPressed: () => _showEditDialog(staff),
+            //     ),
+            //   ),
+            // );
           },
           child: Dismissible(
       key: ValueKey(staff.id),
@@ -1263,7 +1372,7 @@ class _StaffListScreenState extends State<StaffListScreen> {
       debugPrint('Sending payload: ${json.encode(payload)}');
       final client = http.Client();
       http.Response response = await client.post(
-        Uri.parse('${apiClass.baseUrlStaff}?action=updateStaff'),
+        Uri.parse('${apiClass().baseUrlStaff}?action=updateStaff'),
         headers: {
           'Content-Type': 'application/json',
         },

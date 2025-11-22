@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:dropdown_search/dropdown_search.dart';
+import '../alertDialog/customDialog.dart';
 import '../localDB/DBHelper.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 
 class SellScreen extends StatefulWidget {
   const SellScreen({super.key});
@@ -27,6 +31,7 @@ class _SellScreenState extends State<SellScreen> {
   String paymentStatus = "Unpaid";
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final String scriptUrl = "https://script.google.com/macros/s/AKfycbwF-ApiZXB8j9N_mnTPKHITcXqseEbptEoF4Kob_ejquN2Uesu1_O7HkL4xUMVI5T5NZQ/exec"; // Replace this
 
   @override
   void initState() {
@@ -37,6 +42,26 @@ class _SellScreenState extends State<SellScreen> {
     _dateController.text = DateFormat('MM/dd/yyyy').format(now);
     _idDate = DateFormat('ddMMMyyyy').format(now);
     selectedDate = now; // Update selectedDate if you're using it elsewhere
+  }
+
+  Future<void> fetchAndSaveMenuItems() async {
+    final dialog = customDialog(context);
+  dialog.showLoading("Loading Food Items...", subtitle: "Please wait");
+    final res = await http.get(Uri.parse('$scriptUrl?action=getMenuAllItems'));
+    print('Status Code: ${res.statusCode}');
+    if (res.statusCode == 200) {
+      final json = jsonDecode(res.body);
+      final List items = json['data']['items']; // ✅ Get the nested list
+      print('Items: $items');
+      await DBHelper.clearMenuItems();
+      await DBHelper.insertMenuItems(List<Map<String, dynamic>>.from(items));
+      loadCategories();
+      dialog.dismiss();
+      print('✅ Items inserted into SQLite');
+    } else {
+      dialog.dismiss();
+      debugPrint('❌ Failed to fetch: ${res.statusCode}');
+    }
   }
 
   Future<void> loadCategories() async {
@@ -672,6 +697,19 @@ class _SellScreenState extends State<SellScreen> {
           ),
         ),
       ),
+
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => setState(() {
+          fetchAndSaveMenuItems();
+        }),
+        label: Text("Reload Food List",
+          style: TextStyle(color: Colors.white,),),
+        icon: Icon(Icons.refresh, color: Colors.white,),
+        backgroundColor: Colors.deepPurple,
+      ),
     );
+
   }
+
+
 }

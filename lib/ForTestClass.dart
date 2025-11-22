@@ -1,521 +1,342 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-import 'package:restaurant_inventory/api/apiClass.dart';
-import '../localDB/DBHelper.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:restaurant_inventory/Staff/StaffPaymentDetailsScreen.dart';
+import 'package:restaurant_inventory/admin/SalesDashboardScreen.dart';
+import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
+import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
+import '../DashboardScreen.dart';
+import '../Food List/combinedAddFoodListManagementScreen.dart';
+import '../Food List/menu_item_manager_screen.dart';
+import '../Staff/StaffListScreen.dart';
+import '../Staff/StaffLoginPage.dart';
+import '../attendance/RecognitionScreen.dart';
+import '../calCulateCash/CashCalculationScreen.dart';
+import '../sharedPref/SharedPrefsHelper.dart';
 
-class CashCalculationScreen extends StatefulWidget {
-  const CashCalculationScreen({Key? key}) : super(key: key);
-
+class Navigation_Class extends StatefulWidget {
   @override
-  _CashCalculationScreenState createState() => _CashCalculationScreenState();
+  _Navigation_ClassState createState() => _Navigation_ClassState();
 }
 
-class _CashCalculationScreenState extends State<CashCalculationScreen> {
-  DateTime _selectedDate = DateTime.now();
-  bool _isLoading = true;
-  double _totalSales = 0.0;
-  double _totalCosting = 0.0;
-  double _profit = 0.0;
-  double _profitPercentage = 0.0;
+class _Navigation_ClassState extends State<Navigation_Class> {
+  int _selectedDrawerIndex = 0;
+  final SharedPrefsHelper _sharedPrefsHelper = SharedPrefsHelper();
+  String _userRole = '';
+  String _staffName = '';
+  String _staffPosition = '';
 
-  List<BarChartGroupData> _barGroups = [];
-  double _minY = 0;
-  double _maxY = 0;
-  List<String> _xAxisLabels = [];
+  final List<Widget> _pages = [
+    CashCalculationScreen(),
+    CombinedSellManagementScreen(),
+    RecognitionScreen(),
+    CostingRecordScreen(),
+    StaffListScreen(),
+    StaffPaymentDetailsScreen(),
+    combinedAddFoodListManagementScreen(),
+    SalesDashboardScreen(),
+    DashboardScreen(),
+    combinedAddFoodListManagementScreen(),
+    MenuItemManagerScreen(),
+  ];
 
-  final List<Map<String, dynamic>> _profitLossData = [
-    {'label': 'Profit', 'value': 0, 'color': Colors.green},
-    {'label': 'Loss', 'value': 0, 'color': Colors.red},
+  final List<String> _pageTitles = [
+    "Dashboard",
+    'Sell Management',
+    'Costing Management',
+    'Profile View',
+    "Payment Record View",
+    'Add Attendance',
+    'Attendance View',
+    'Staff List',
+    'Food List Management',
+    'Sales Dashboard'
+
+  ];
+
+  final List<Color> _appBarColors = [
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Color(0x341771).withOpacity(1.0),
+    Colors.teal,
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadAllDataAndCalculateMetrics(_selectedDate);
+    _loadUserData();
   }
 
-  Future<void> _loadAllDataAndCalculateMetrics(DateTime date) async {
-    setState(() => _isLoading = true);
-
-    try {
-      final allSales = await DBHelper.getSales();
-      final allCosting = await DBHelper.getCostingRecords();
-      final dateFormat = DateFormat('yyyy-MM-dd');
-      final selectedDateString = dateFormat.format(date);
-
-      // Reset values
-      _totalSales = 0.0;
-      _totalCosting = 0.0;
-      _profit = 0.0;
-      _profitPercentage = 0.0;
-
-      // Reset profit/loss data
-      _profitLossData[0]['value'] = 0;
-      _profitLossData[1]['value'] = 0;
-
-      // Calculate sales
-      for (var sale in allSales) {
-        try {
-          final saleDate = DateFormat('MM/dd/yyyy').parse(sale['date']);
-          if (dateFormat.format(saleDate) == selectedDateString) {
-            _totalSales += (sale['total'] as num).toDouble();
-          }
-        } catch (e) {
-          print('Error parsing sale date: $e');
-        }
-      }
-
-      // Calculate costing
-      for (var record in allCosting) {
-        if (record['date'] == selectedDateString) {
-          _totalCosting += (record['amount'] as num).toDouble();
-        }
-      }
-
-      _profit = _totalSales - _totalCosting;
-
-      // Calculate profit percentage
-      if (_totalSales > 0) {
-        _profitPercentage = (_profit / _totalSales).abs().clamp(0.0, 1.0);
-      }
-
-      // Update profit/loss data
-      if (_profit >= 0) {
-        _profitLossData[0]['value'] = _profit;
-      } else {
-        _profitLossData[1]['value'] = _profit.abs();
-      }
-
-      // Prepare chart data
-      _barGroups = [
-        BarChartGroupData(
-          x: 0,
-          barRods: [
-            BarChartRodData(
-              toY: _profit,
-              color: _profit >= 0 ? Colors.green : Colors.red,
-              width: 30,
-              borderRadius: BorderRadius.zero,
-            )
-          ],
-        )
-      ];
-
-      _xAxisLabels = [DateFormat('MM/dd').format(date)];
-      _minY = _profit < 0 ? _profit * 1.1 : 0;
-      _maxY = _profit > 0 ? _profit * 1.1 : 0;
-
-      setState(() => _isLoading = false);
-    } catch (e) {
-      print('Error calculating metrics: $e');
-      setState(() {
-        _isLoading = false;
-        _totalSales = 0.0;
-        _totalCosting = 0.0;
-        _profit = 0.0;
-        _profitPercentage = 0.0;
-        _profitLossData[0]['value'] = 0;
-        _profitLossData[1]['value'] = 0;
-      });
-    }
+  Future<void> _loadUserData() async {
+    final staffData = await _sharedPrefsHelper.getStaffLoginData();
+    setState(() {
+      _userRole = staffData['userrole'] ?? '';
+      _staffName = staffData['staff_name'] ?? '';
+      _staffPosition = staffData['staff_position'] ?? '';
+    });
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+  void _onSelectItem(int index) {
+    setState(() {
+      _selectedDrawerIndex = index;
+    });
+    Navigator.pop(context);
+  }
+
+  Widget _buildDrawerHeader(BuildContext context) {
+    return DrawerHeader(
+      decoration: BoxDecoration(color: Colors.blue),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.topRight,
+            child: IconButton(
+              icon: Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () {
+                Navigator.pop(context);
+              },
+            ),
+          ),
+          Align(
+            alignment: Alignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundImage: AssetImage('assets/freshbite_icon.png'),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Fresh Bite',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
+                Text(
+                  _staffName.isNotEmpty ? _staffName : 'User',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  _staffPosition.isNotEmpty ? _staffPosition : _userRole,
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                SizedBox(height: 5),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getRoleColor(_userRole),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _userRole.toUpperCase(),
+                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
-    if (picked != null && picked != _selectedDate) {
-      setState(() => _selectedDate = picked);
-      _loadAllDataAndCalculateMetrics(_selectedDate);
+  }
+
+  Color _getRoleColor(String role) {
+    switch (role.toLowerCase()) {
+      case 'admin':
+        return Colors.green;
+      case 'staff':
+        return Colors.blue;
+      default:
+        return Colors.grey;
     }
+  }
+
+  // Method to check if user has access to a specific feature
+  bool _hasAccess(String requiredRole) {
+    if (_userRole.isEmpty) return false;
+
+    // Admin has access to everything
+    if (_userRole.toLowerCase() == 'admin') return true;
+
+    // Staff only has access to specific features
+    if (_userRole.toLowerCase() == 'staff') {
+      // Define what staff can access
+      final staffAccessibleFeatures = [
+        'dashboard',
+        'sell management',
+        'costing management',
+        // Add other features that staff should have access to
+      ];
+      return staffAccessibleFeatures.contains(requiredRole.toLowerCase());
+    }
+
+    return false;
+  }
+
+  // Get drawer items based on user role
+  List<Widget> _getDrawerItems() {
+    final drawerItems = <Widget>[
+      _buildDrawerHeader(context),
+
+      // Dashboard - Accessible to all
+      ListTile(
+        leading: Icon(Icons.home),
+        title: Text('Dashboard'),
+        onTap: () => _onSelectItem(0),
+      ),
+
+      // Sell Management - Accessible to all
+      ListTile(
+        leading: Icon(Icons.category),
+        title: Text('Sell Management'),
+        onTap: () => _onSelectItem(1),
+      ),
+
+      // Costing Management - Accessible to all
+      ListTile(
+        leading: Icon(Icons.person),
+        title: Text('Costing Management'),
+        onTap: () => _onSelectItem(2),
+      ),
+    ];
+
+    // Staff Management - Only for Admin
+    if (_hasAccess('staff management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.restaurant_menu),
+          title: Text('Staff Management'),
+          onTap: () => _onSelectItem(3),
+        ),
+      );
+    }
+
+    // Salary Records - Only for Admin
+    if (_hasAccess('salary record')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.calculate_outlined),
+          title: Text('Salary Records'),
+          onTap: () => _onSelectItem(4),
+        ),
+      );
+    }
+
+    // Food List Management - Only for Admin
+    if (_hasAccess('food list management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.person_add),
+          title: Text('Add Food List'),
+          onTap: () => _onSelectItem(5),
+        ),
+      );
+    }
+
+    // Staff Payment - Only for Admin
+    if (_hasAccess('staff payment')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.payment),
+          title: Text('Staff Payment'),
+          onTap: () => _onSelectItem(6),
+        ),
+      );
+    }
+
+    // Sales Dashboard - Only for Admin
+    if (_hasAccess('sales dashboard')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.dashboard),
+          title: Text('Sales Dashboard'),
+          onTap: () => _onSelectItem(7),
+        ),
+      );
+    }
+
+    // Add logout button at the end
+    drawerItems.addAll([
+      Divider(),
+      ListTile(
+        leading: Icon(Icons.logout, color: Colors.red),
+        title: Text('Logout', style: TextStyle(color: Colors.red)),
+        onTap: _logout,
+      ),
+    ]);
+
+    return drawerItems;
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 600;
-
     return Scaffold(
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-        padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
-        child: Column(
-          children: [
-
-            // Chart and summary section
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(isSmallScreen ? 10.0 : 14.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                'Selected Date:',
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w300,
-                                  color:Color(0x341771).withOpacity(1.0),
-
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => _selectDate(context),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-
-                                  Text(
-                                    DateFormat('yyyy-MM-dd').format(_selectedDate),
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Icon(Icons.calendar_today,size: 16,),
-                                  const Icon(Icons.arrow_drop_down),
-
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildChartGraph(isSmallScreen: isSmallScreen),
-                    const SizedBox(height: 20),
-                    _buildSummaryCard(
-                      title: 'Total Sales (${DateFormat('MM/dd/yyyy').format(_selectedDate)})',
-                      amount: _totalSales,
-                      color: Colors.green,
-                      icon: Icons.trending_up,
-                      isSmallScreen: isSmallScreen,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildSummaryCard(
-                      title: 'Total Costing (${DateFormat('MM/dd/yyyy').format(_selectedDate)})',
-                      amount: _totalCosting,
-                      color: Colors.red,
-                      icon: Icons.trending_down,
-                      isSmallScreen: isSmallScreen,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildProfitCard(
-                      profit: _profit,
-                      isSmallScreen: isSmallScreen,
-                    ),
-
-                    ElevatedButton(
-                      onPressed: () => syncSalesToGoogleSheets(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.cloud_upload, size: 16),
-                          SizedBox(width: 8),
-                          Text('Sync to Google Sheets'),
-                        ],
-                      ),
-                    ),
-
-                  ],
+      appBar: AppBar(
+        backgroundColor: _selectedDrawerIndex < _appBarColors.length
+            ? _appBarColors[_selectedDrawerIndex]
+            : Colors.grey,
+        elevation: 0,
+        title: Text(
+          _pageTitles[_selectedDrawerIndex],
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        centerTitle: true,
+        leading: _selectedDrawerIndex != 0
+            ? IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            setState(() {
+              _selectedDrawerIndex = 0;
+            });
+          },
+        )
+            : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+          ),
+        ),
+        actions: [
+          // Show user role in app bar
+          if (_userRole.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Center(
+                child: Text(
+                  _userRole.toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard({
-    required String title,
-    required double amount,
-    required Color color,
-    required IconData icon,
-    required bool isSmallScreen,
-  }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color: color,
-              size: isSmallScreen ? 32 : 40,
-            ),
-            SizedBox(width: isSmallScreen ? 12 : 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 16 : 18,
-                      color: Colors.grey[700],
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '\$${amount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 22 : 28,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfitCard({
-    required double profit,
-    required bool isSmallScreen,
-  }) {
-    Color profitColor = profit >= 0 ? Colors.green.shade700 : Colors.red.shade700;
-    String profitText = profit >= 0 ? 'Profit' : 'Loss';
-    IconData profitIcon = profit >= 0 ? Icons.attach_money : Icons.money_off;
-
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
-        child: Row(
-          children: [
-            Icon(
-              profitIcon,
-              color: profitColor,
-              size: isSmallScreen ? 32 : 40,
-            ),
-            SizedBox(width: isSmallScreen ? 12 : 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Net $profitText',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 16 : 18,
-                      color: Colors.grey[700],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '\$${profit.abs().toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 22 : 28,
-                      fontWeight: FontWeight.bold,
-                      color: profitColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChartGraph({required bool isSmallScreen}) {
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 2,
-            blurRadius: 5,
-            offset: const Offset(0, 3),
-          ),
         ],
       ),
-      child: Column(
-        children: [
-          const Text(
-            'Total Products Sales',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${DateFormat('MMM dd').format(_selectedDate)} - ${DateFormat('MMM dd yyyy').format(_selectedDate.add(const Duration(days: 30)))}',
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-
-          // Circular chart
-          CircularPercentIndicator(
-            radius: isSmallScreen ? 50.0 : 60.0,
-            lineWidth: 10.0,
-            percent: _profitPercentage,
-            center: Text(
-              _totalSales > 0
-                  ? "${(_profitPercentage * 100 * (_profit >= 0 ? 1 : -1)).toStringAsFixed(0)}%"
-                  : "0%",
-              style: TextStyle(
-                fontSize: isSmallScreen ? 20 : 24,
-                fontWeight: FontWeight.bold,
-                color: _totalSales > 0
-                    ? (_profit >= 0 ? Colors.green : Colors.red)
-                    : Colors.grey,
-              ),
-            ),
-            progressColor: _totalSales > 0
-                ? (_profit >= 0 ? Colors.green : Colors.red)
-                : Colors.grey,
-            backgroundColor: Colors.grey.shade200,
-            circularStrokeCap: CircularStrokeCap.round,
-          ),
-          const SizedBox(height: 20),
-
-          // Profit/Loss indicators
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: _profitLossData.map((data) {
-              return Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: data['color'],
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            data['label'],
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          Text(
-                            '\$${data['value'].toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: data['color'],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        ],
-      ),
+      drawer: _selectedDrawerIndex == 0
+          ? Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: _getDrawerItems(),
+        ),
+      )
+          : null,
+      body: _pages[_selectedDrawerIndex],
     );
   }
 
-  static Future<void> syncSalesToGoogleSheets() async {
-    try {
-      // Get all sales with their items
-      final salesWithItems = await DBHelper.getAllSalesWithItems();
-
-
-      // Prepare data for Google Sheets
-      final salesData = salesWithItems.map((sale) {
-        return {
-          'saleRecord': {
-            'id': sale['id'],
-            'date': sale['date'],
-            'total': sale['total'],
-            'discount': sale['discount'],
-            'paymentMethod': sale['paymentMethod'],
-            'paymentStatus': sale['paymentStatus'],
-          },
-          'saleItems': (sale['items'] as List).map((item) {
-            return {
-              'saleId': item['saleId'],
-              'menuItemId': item['menuItemId'],
-              'name': item['name'],
-              'quantity': item['quantity'],
-              'price': item['price'],
-              'total': item['total'],
-            };
-          }).toList(),
-        };
-      }).toList();
-
-      // Send to Google Sheets
-      await _sendSalesDataToGoogleSheets(salesData);
-    } catch (e) {
-      print('Error syncing sales to Google Sheets: $e');
-      rethrow;
-    }
-  }
-
-  static Future<void> _sendSalesDataToGoogleSheets(List<dynamic> salesData) async {
-    final response = await http.post(
-      Uri.parse(apiClass.baseUrlSell),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'action': 'syncSalesData',
-        'data': salesData,
-      }),
+  Future<void> _logout() async {
+    await _sharedPrefsHelper.removeStaffLoginData();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => StaffLoginPage()),
     );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to sync sales data: ${response.body}');
-    }
   }
 }

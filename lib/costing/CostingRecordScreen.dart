@@ -42,7 +42,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
       }});
     }
 
-        void deleteCostingRecord(int id) async {
+        void deleteCostingRecord(String id) async {
       final db = await DBHelper.db;
       await db.delete('costing_records', where: 'id = ?', whereArgs: [id]);
       loadCostingRecords();
@@ -124,7 +124,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
               ElevatedButton(
                 onPressed: () async {
                   await DBHelper.updateCostingRecord(
-                      id: record['id'],
+                      id: record['id'].toString(),
                       date: record['date'],
                       type: selectedType,
                       description: descController.text,
@@ -289,7 +289,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                       return confirm;
                     }
                   },
-                  onDismissed: (_) => deleteCostingRecord(record['id']),
+                  onDismissed: (_) => deleteCostingRecord(record['id'].toString()),
                   child: Card(
                     elevation: 2,
                     color: cardColor,
@@ -328,7 +328,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                             ),
                             onPressed: () async {
                               await DBHelper.updateCostingPaymentStatus(
-                                id: record['id'],
+                                id: record['id'].toString(),
                                 paymentStatus: newStatus,
                               );
                               loadCostingRecords();
