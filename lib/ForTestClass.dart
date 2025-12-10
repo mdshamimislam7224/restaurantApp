@@ -1,342 +1,514 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:restaurant_inventory/Staff/StaffPaymentDetailsScreen.dart';
-import 'package:restaurant_inventory/admin/SalesDashboardScreen.dart';
-import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
-import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
-import '../DashboardScreen.dart';
-import '../Food List/combinedAddFoodListManagementScreen.dart';
-import '../Food List/menu_item_manager_screen.dart';
-import '../Staff/StaffListScreen.dart';
-import '../Staff/StaffLoginPage.dart';
-import '../attendance/RecognitionScreen.dart';
-import '../calCulateCash/CashCalculationScreen.dart';
-import '../sharedPref/SharedPrefsHelper.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 
-class Navigation_Class extends StatefulWidget {
+import 'attendance/ui/AttendanceCard.dart';
+import 'attendance/ui/PunchButton.dart';
+import 'attendance/ui/model_class/ApiServiceAttendance.dart';
+import 'attendance/ui/model_class/AttendanceRecord.dart';
+class AttendanceScreen extends StatefulWidget {
+  final String staffId;
+  final String staffName;
+
+  const AttendanceScreen({
+    super.key,
+    required this.staffId,
+    required this.staffName,
+  });
+
   @override
-  _Navigation_ClassState createState() => _Navigation_ClassState();
+  State<AttendanceScreen> createState() => _AttendanceScreenState();
 }
 
-class _Navigation_ClassState extends State<Navigation_Class> {
-  int _selectedDrawerIndex = 0;
-  final SharedPrefsHelper _sharedPrefsHelper = SharedPrefsHelper();
-  String _userRole = '';
-  String _staffName = '';
-  String _staffPosition = '';
-
-  final List<Widget> _pages = [
-    CashCalculationScreen(),
-    CombinedSellManagementScreen(),
-    RecognitionScreen(),
-    CostingRecordScreen(),
-    StaffListScreen(),
-    StaffPaymentDetailsScreen(),
-    combinedAddFoodListManagementScreen(),
-    SalesDashboardScreen(),
-    DashboardScreen(),
-    combinedAddFoodListManagementScreen(),
-    MenuItemManagerScreen(),
-  ];
-
-  final List<String> _pageTitles = [
-    "Dashboard",
-    'Sell Management',
-    'Costing Management',
-    'Profile View',
-    "Payment Record View",
-    'Add Attendance',
-    'Attendance View',
-    'Staff List',
-    'Food List Management',
-    'Sales Dashboard'
-
-  ];
-
-  final List<Color> _appBarColors = [
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Color(0x341771).withOpacity(1.0),
-    Colors.teal,
-  ];
+class _AttendanceScreenState extends State<AttendanceScreen> {
+  final ApiServiceAttendance _apiService = ApiServiceAttendance();
+  bool _isLoading = false;
+  bool _isPunching = false;
+  Position? _currentPosition;
+  String _errorMessage = '';
+  List<AttendanceRecord> _todayAttendance = [];
+  List<AttendanceRecord> _recentAttendance = [];
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    // _getCurrentLocation();
+    _loadTodayAttendance();
+    _loadRecentAttendance();
   }
 
-  Future<void> _loadUserData() async {
-    final staffData = await _sharedPrefsHelper.getStaffLoginData();
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _errorMessage = 'Location services are disabled.';
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _errorMessage = 'Location permissions are denied';
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _errorMessage = 'Location permissions are permanently denied';
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _currentPosition = position;
+        _errorMessage = '';
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to get location: $e';
+      });
+    }
+  }
+
+  Future<void> _loadTodayAttendance() async {
     setState(() {
-      _userRole = staffData['userrole'] ?? '';
-      _staffName = staffData['staff_name'] ?? '';
-      _staffPosition = staffData['staff_position'] ?? '';
+      _isLoading = true;
     });
+
+    try {
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final response = await _apiService.getAttendancespecificStaff(
+        staffId: widget.staffId,
+        date: today,
+        dailyLimit: 5,
+        logLimit: 5,
+      );
+
+      setState(() {
+        _todayAttendance = response.dailyAttendance;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load attendance: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
-  void _onSelectItem(int index) {
+  Future<void> _loadRecentAttendance() async {
+    try {
+      final response = await _apiService.getAttendancespecificStaff(
+        staffId: widget.staffId,
+        dailyLimit: 10,
+        logLimit: 10,
+      );
+
+      setState(() {
+        _recentAttendance = response.dailyAttendance;
+      });
+    } catch (e) {
+      // Silently handle error for recent attendance
+    }
+  }
+
+  Future<void> _punchAttendance(String action) async {
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enable location services'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() {
-      _selectedDrawerIndex = index;
+      _isPunching = true;
     });
-    Navigator.pop(context);
-  }
 
-  Widget _buildDrawerHeader(BuildContext context) {
-    return DrawerHeader(
-      decoration: BoxDecoration(color: Colors.blue),
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topRight,
-            child: IconButton(
-              icon: Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () {
-                Navigator.pop(context);
-              },
-            ),
-          ),
-          Align(
-            alignment: Alignment.center,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundImage: AssetImage('assets/freshbite_icon.png'),
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'Fresh Bite',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
-                Text(
-                  _staffName.isNotEmpty ? _staffName : 'User',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  _staffPosition.isNotEmpty ? _staffPosition : _userRole,
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-                SizedBox(height: 5),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getRoleColor(_userRole),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _userRole.toUpperCase(),
-                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    try {
+      final result = await _apiService.punchAttendance(
+        staffId: widget.staffId,
+        action: action,
+        latitude: 23.8104,
+        longitude: 90.41211,
+        notes: 'Punched from mobile app',
+      );
 
-  Color _getRoleColor(String role) {
-    switch (role.toLowerCase()) {
-      case 'admin':
-        return Colors.green;
-      case 'staff':
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  // Method to check if user has access to a specific feature
-  bool _hasAccess(String requiredRole) {
-    if (_userRole.isEmpty) return false;
-
-    // Admin has access to everything
-    if (_userRole.toLowerCase() == 'admin') return true;
-
-    // Staff only has access to specific features
-    if (_userRole.toLowerCase() == 'staff') {
-      // Define what staff can access
-      final staffAccessibleFeatures = [
-        'dashboard',
-        'sell management',
-        'costing management',
-        // Add other features that staff should have access to
-      ];
-      return staffAccessibleFeatures.contains(requiredRole.toLowerCase());
-    }
-
-    return false;
-  }
-
-  // Get drawer items based on user role
-  List<Widget> _getDrawerItems() {
-    final drawerItems = <Widget>[
-      _buildDrawerHeader(context),
-
-      // Dashboard - Accessible to all
-      ListTile(
-        leading: Icon(Icons.home),
-        title: Text('Dashboard'),
-        onTap: () => _onSelectItem(0),
-      ),
-
-      // Sell Management - Accessible to all
-      ListTile(
-        leading: Icon(Icons.category),
-        title: Text('Sell Management'),
-        onTap: () => _onSelectItem(1),
-      ),
-
-      // Costing Management - Accessible to all
-      ListTile(
-        leading: Icon(Icons.person),
-        title: Text('Costing Management'),
-        onTap: () => _onSelectItem(2),
-      ),
-    ];
-
-    // Staff Management - Only for Admin
-    if (_hasAccess('staff management')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.restaurant_menu),
-          title: Text('Staff Management'),
-          onTap: () => _onSelectItem(3),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Successfully ${action.toLowerCase()}ed!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
         ),
       );
-    }
 
-    // Salary Records - Only for Admin
-    if (_hasAccess('salary record')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.calculate_outlined),
-          title: Text('Salary Records'),
-          onTap: () => _onSelectItem(4),
+      // Refresh attendance data
+      await _loadTodayAttendance();
+      await _loadRecentAttendance();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to punch: $e'),
+          backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      setState(() {
+        _isPunching = false;
+      });
     }
-
-    // Food List Management - Only for Admin
-    if (_hasAccess('food list management')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.person_add),
-          title: Text('Add Food List'),
-          onTap: () => _onSelectItem(5),
-        ),
-      );
-    }
-
-    // Staff Payment - Only for Admin
-    if (_hasAccess('staff payment')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.payment),
-          title: Text('Staff Payment'),
-          onTap: () => _onSelectItem(6),
-        ),
-      );
-    }
-
-    // Sales Dashboard - Only for Admin
-    if (_hasAccess('sales dashboard')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.dashboard),
-          title: Text('Sales Dashboard'),
-          onTap: () => _onSelectItem(7),
-        ),
-      );
-    }
-
-    // Add logout button at the end
-    drawerItems.addAll([
-      Divider(),
-      ListTile(
-        leading: Icon(Icons.logout, color: Colors.red),
-        title: Text('Logout', style: TextStyle(color: Colors.red)),
-        onTap: _logout,
-      ),
-    ]);
-
-    return drawerItems;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: _selectedDrawerIndex < _appBarColors.length
-            ? _appBarColors[_selectedDrawerIndex]
-            : Colors.grey,
-        elevation: 0,
-        title: Text(
-          _pageTitles[_selectedDrawerIndex],
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        centerTitle: true,
-        leading: _selectedDrawerIndex != 0
-            ? IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            setState(() {
-              _selectedDrawerIndex = 0;
-            });
-          },
-        )
-            : null,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(20),
-            bottomRight: Radius.circular(20),
-          ),
-        ),
-        actions: [
-          // Show user role in app bar
-          if (_userRole.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(right: 16),
-              child: Center(
-                child: Text(
-                  _userRole.toUpperCase(),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+      backgroundColor: const Color(0xFFF5F7FB),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF4361EE),
+                    Color(0xFF3A0CA3),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Welcome,',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.staffName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          DateFormat('h:mm a').format(DateTime.now()),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              color: Colors.white.withOpacity(0.8),
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _currentPosition != null
+                                    ? 'Lat: ${_currentPosition!.latitude.toStringAsFixed(4)}, Lng: ${_currentPosition!.longitude.toStringAsFixed(4)}'
+                                    : 'Getting location...',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Punch Buttons
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PunchButton(
+                      label: 'Clock In',
+                      icon: Icons.login,
+                      color: const Color(0xFF4CAF50),
+                      isLoading: _isPunching,
+                      onPressed: () => _punchAttendance('in'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: PunchButton(
+                      label: 'Clock Out',
+                      icon: Icons.logout,
+                      color: const Color(0xFFF44336),
+                      isLoading: _isPunching,
+                      onPressed: () => _punchAttendance('out'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Today's Attendance
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        "Today's Attendance",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF333333),
+                        ),
+                      ),
+                    ),
+
+                    if (_isLoading)
+                      const Center(
+                        child: CircularProgressIndicator(),
+                      )
+                    else if (_todayAttendance.isNotEmpty)
+                      Column(
+                        children: _todayAttendance.map((record) {
+                          return AttendanceCard(
+                            date: record.date,
+                            status: record.status,
+                            inTime: record.firstInTime,
+                            outTime: record.lastOutTime,
+                            hoursWorked: record.hoursWorked,
+                            onTap: () {
+                              // Show details
+                            },
+                          );
+                        }).toList(),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.access_time,
+                              size: 64,
+                              color: Colors.grey.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No attendance recorded today',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    const SizedBox(height: 20),
+
+                    // Recent Attendance
+                    if (_recentAttendance.isNotEmpty) ...[
+                      const Text(
+                        'Recent Attendance',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF333333),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ..._recentAttendance.take(3).map((record) {
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    record.date,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Status: ${record.status}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: _getStatusColor(record.status),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (record.hoursWorked != null && record.hoursWorked!.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE3F2FD),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    record.hoursWorked!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1976D2),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 20),
+                    ],
+
+                    if (_errorMessage.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error, color: Colors.red, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _errorMessage,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
-        ],
-      ),
-      drawer: _selectedDrawerIndex == 0
-          ? Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: _getDrawerItems(),
+          ],
         ),
-      )
-          : null,
-      body: _pages[_selectedDrawerIndex],
+      ),
     );
   }
 
-  Future<void> _logout() async {
-    await _sharedPrefsHelper.removeStaffLoginData();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => StaffLoginPage()),
-    );
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'present':
+        return Colors.green;
+      case 'late':
+        return Colors.orange;
+      case 'absent':
+        return Colors.red;
+      case 'early':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
   }
 }

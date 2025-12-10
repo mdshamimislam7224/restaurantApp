@@ -1,17 +1,19 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:restaurant_inventory/Staff/StaffPaymentDetailsScreen.dart';
-import 'package:restaurant_inventory/Staff/StaffSinglePaymentDetailsScreen.dart';
-import 'package:restaurant_inventory/admin/SalesDashboardScreen.dart';
-import 'package:restaurant_inventory/costing/CostingRecordScreen.dart';
-import 'package:restaurant_inventory/sell/CombinedSellManagementScreen.dart';
+
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Staff/StaffListScreen.dart';
 import '../Staff/StaffLoginPage.dart';
+import '../Staff/StaffPaymentDetailsScreen.dart';
 import '../Staff/StaffProfileScreen.dart';
+import '../Staff/StaffSinglePaymentDetailsScreen.dart';
+import '../admin/SalesDashboardScreen.dart';
 import '../attendance/RecognitionScreen.dart';
+import '../attendance/ui/HomeScreen.dart';
 import '../calCulateCash/CashCalculationScreen.dart';
+import '../costing/CostingRecordScreen.dart';
 import '../localDB/DatabaseHelper.dart';
+import '../sell/CombinedSellManagementScreen.dart';
 import '../sharedPref/SharedPrefsHelper.dart';
 
 class Navigation_Class extends StatefulWidget {
@@ -58,10 +60,15 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         StaffListScreen(),
         combinedAddFoodListManagementScreen(),
         SalesDashboardScreen(),
+        HomeScreen(
+          staffId: staffId, // Replace with actual staff ID
+          staffName: _staffName, // Replace with actual name
+        )
       ];
     });
   }
 
+  // UPDATE: Add 11 titles to match 11 pages
   final List<String> _pageTitles = [
     "Dashboard",
     'Sell Management',
@@ -72,9 +79,11 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     'Staff Payment View',
     'Staff List',
     'Food List Management',
-    'Sales Dashboard'
+    'Sales Dashboard',
+    "Attendance Management", // Added this 11th title
   ];
 
+  // UPDATE: Add 11 colors to match 11 pages
   final List<Color> _appBarColors = [
     Colors.blue,
     Colors.blue,
@@ -85,7 +94,8 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     Colors.blue,
     Colors.blue,
     Colors.blue,
-    Colors.blue
+    Colors.blue,
+    Colors.blue, // Added this 11th color
   ];
 
   void _onSelectItem(int index) {
@@ -307,6 +317,16 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       );
     }
 
+    if (_hasAccess('Attendance Management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.access_time),
+          title: Text('Attendance Management'),
+          onTap: () => _onSelectItem(10),
+        ),
+      );
+    }
+
     // Add logout button
     drawerItems.addAll([
       Divider(),
@@ -328,6 +348,10 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
+    // ADD SAFETY CHECK before accessing arrays
+    final safeIndex = _selectedDrawerIndex.clamp(0, _pages!.length - 1);
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: _selectedDrawerIndex < _appBarColors.length
@@ -335,7 +359,9 @@ class _Navigation_ClassState extends State<Navigation_Class> {
             : Colors.grey,
         elevation: 0,
         title: Text(
-          _pageTitles[_selectedDrawerIndex],
+          _selectedDrawerIndex < _pageTitles.length
+              ? _pageTitles[_selectedDrawerIndex]
+              : 'Unknown',
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
@@ -363,7 +389,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
           children: _getDrawerItems(),
         ),
       ),
-      body: _pages![_selectedDrawerIndex],
+      body: _pages![safeIndex], // Use safeIndex instead of _selectedDrawerIndex
     );
   }
 
