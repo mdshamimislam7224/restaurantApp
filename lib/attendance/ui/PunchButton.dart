@@ -71,7 +71,7 @@ class _PunchButtonState extends State<PunchButton> {
             ),
           )
               : Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
               Icon(
                 widget.icon,
@@ -83,7 +83,7 @@ class _PunchButtonState extends State<PunchButton> {
                 widget.label,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),

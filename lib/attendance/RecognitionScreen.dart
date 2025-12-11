@@ -14,6 +14,8 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:restaurant_inventory/attendance/ui/HomeScreen.dart';
+import 'package:restaurant_inventory/attendance/ui/model_class/ApiServiceAttendance.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
@@ -29,14 +31,12 @@ import '../localDB/DatabaseHelper.dart';
 import '../main.dart';
 import '../sharedPref/SharedPrefsHelper.dart';
 
-
 class RecognitionScreen extends StatefulWidget {
   const RecognitionScreen({Key? key}) : super(key: key);
 
   @override
   _RecognitionScreen createState() => _RecognitionScreen();
 }
-
 class _RecognitionScreen extends State<RecognitionScreen> implements InternetCheckCallback {
   dynamic controller;
   bool isBusy = false;
@@ -50,8 +50,10 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   String? username;
   String? _imagePath;
   String? _officialID;
+  bool _isPunching = false;
   late Size size;
   bool _isDisposed = false;
+  final ApiServiceAttendance _apiService = ApiServiceAttendance();
   int successCounter = 0;
   late CameraDescription description = cameras[1];
   CameraLensDirection camDirec = CameraLensDirection.front;
@@ -115,7 +117,8 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
 
     // Load model asynchronously
     await recognizer.loadModel();
-
+    // Wait a moment to ensure database is fully initialized
+    await Future.delayed(Duration(milliseconds: 100));
     // Check database status
     _checkDatabaseStatus();
 
@@ -517,77 +520,77 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
       _officialID = await sharedPrefsHelper.getOfficialID();
 
       // Call sendData to check permissions via API
-      await _checkPermissionAndSendData();
+      await _punchAttendance("IN");
     }
   }
 
-  Future<void> _checkPermissionAndSendData() async {
-    print("Checking permissions and sending data...");
-    print("Username: $username");
-    print("Official ID: $_officialID");
-    if (!isRecognizedTimeCheck && !_isDisposed) {
-      setState(() {
-        isRecognizedTimeCheck = true;
-      });
-      // sendData(
-      //   onSuccess: (bool success) {
-      //     if (!_isDisposed && mounted) {
-      //       setState(() {
-      //         isRecognized = true;
-      //       });
-      //     }
-      //     _locationService.stopLocationUpdates();
-      //
-      //     // Navigate after showing success message
-      //     //Future.delayed(Duration(seconds: 1), () {
-      //     if (mounted) {
-      //       Navigator.pushReplacement(
-      //         context,
-      //         MaterialPageRoute(builder: (context) => Navigation_Class()),
-      //       );
-      //       showToast("Attendance submitted successfully!",Colors.green);
-      //     }
-      //     // });
-      //   },
-      //   onError: (String error) {
-      //     print('Error occurred: $error');
-      //     _locationService.stopLocationUpdates();
-      //     if (!_isDisposed && mounted) {
-      //       setState(() {
-      //         isRecognizedTimeCheck = false;
-      //         isErrorRecognized = true;
-      //         isErrorRecognizedTimeCheck = true;
-      //
-      //         // Set appropriate error message based on error type
-      //         if (error.contains('Permission Denied') ||
-      //             error.contains('"message":"Permission Denied!"')) {
-      //           errorMessage = 'Permission Denied!';
-      //           // Keep the recognized username and ID for permission denied cases
-      //         } else if (error.contains('not allow to remote check in') ||
-      //             error.contains('are not allow to remote check in')) {
-      //           errorMessage = 'Remote attendance not allowed';
-      //           // Keep the recognized username and ID
-      //         } else {
-      //           // For other errors
-      //           errorMessage = error;
-      //         }
-      //       });
-      //     }
-      //
-      //     _recognitionTimer?.cancel();
-      //     _recognitionTimer = Timer(Duration(seconds: 2), () {
-      //       if (!_isDisposed && mounted) {
-      //         setState(() {
-      //           isErrorRecognized = false;
-      //           isErrorRecognizedTimeCheck = false;
-      //           errorMessage = '';
-      //         });
-      //       }
-      //     });
-      //   },
-      // );
-    }
-  }
+  // Future<void> _checkPermissionAndSendData() async {
+  //   print("Checking permissions and sending data...");
+  //   print("Username: $username");
+  //   print("Official ID: $_officialID");
+  //   if (!isRecognizedTimeCheck && !_isDisposed) {
+  //     setState(() {
+  //       isRecognizedTimeCheck = true;
+  //     });
+  //     sendData(
+  //       onSuccess: (bool success) {
+  //         if (!_isDisposed && mounted) {
+  //           setState(() {
+  //             isRecognized = true;
+  //           });
+  //         }
+  //         _locationService.stopLocationUpdates();
+  //
+  //         // Navigate after showing success message
+  //         //Future.delayed(Duration(seconds: 1), () {
+  //         if (mounted) {
+  //           Navigator.pushReplacement(
+  //             context,
+  //             MaterialPageRoute(builder: (context) => Navigation_Class()),
+  //           );
+  //           showToast("Attendance submitted successfully!",Colors.green);
+  //         }
+  //         // });
+  //       },
+  //       onError: (String error) {
+  //         print('Error occurred: $error');
+  //         _locationService.stopLocationUpdates();
+  //         if (!_isDisposed && mounted) {
+  //           setState(() {
+  //             isRecognizedTimeCheck = false;
+  //             isErrorRecognized = true;
+  //             isErrorRecognizedTimeCheck = true;
+  //
+  //             // Set appropriate error message based on error type
+  //             if (error.contains('Permission Denied') ||
+  //                 error.contains('"message":"Permission Denied!"')) {
+  //               errorMessage = 'Permission Denied!';
+  //               // Keep the recognized username and ID for permission denied cases
+  //             } else if (error.contains('not allow to remote check in') ||
+  //                 error.contains('are not allow to remote check in')) {
+  //               errorMessage = 'Remote attendance not allowed';
+  //               // Keep the recognized username and ID
+  //             } else {
+  //               // For other errors
+  //               errorMessage = error;
+  //             }
+  //           });
+  //         }
+  //
+  //         _recognitionTimer?.cancel();
+  //         _recognitionTimer = Timer(Duration(seconds: 2), () {
+  //           if (!_isDisposed && mounted) {
+  //             setState(() {
+  //               isErrorRecognized = false;
+  //               isErrorRecognizedTimeCheck = false;
+  //               errorMessage = '';
+  //             });
+  //           }
+  //         });
+  //       },
+  //     );
+  //   }
+  // }
 
   // Performance logging
   void _logPerformance(String operation, Stopwatch stopwatch) {
@@ -1144,6 +1147,46 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   //   }
   // }
 
+
+  Future<void> _punchAttendance(String action) async {
+    setState(() {
+      _isPunching = true;
+    });
+
+    try {
+      final result = await _apiService.punchAttendance(
+        staffId: _officialID!,
+        action: action,
+        latitude: double.parse(latitude!),
+        longitude: double.parse(longitude!),
+        notes: 'Punched from mobile app',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Successfully ${action.toLowerCase()}ed!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // Refresh attendance data
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen(staffId: _officialID!,staffName: username!)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to punch: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isPunching = false;
+      });
+    }
+  }
   void showToast(String message,Color bgColor) {
     Fluttertoast.showToast(
       msg: message,

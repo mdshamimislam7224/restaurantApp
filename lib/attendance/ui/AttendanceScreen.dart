@@ -1,7 +1,14 @@
+import 'dart:io';
+
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+import '../../Location/LocationService.dart';
+import '../../alertDialog/customDialog.dart';
 import 'AttendanceCard.dart';
 import 'PunchButton.dart';
 import 'model_class/ApiServiceAttendance.dart';
@@ -23,6 +30,14 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
+  final LocationService _locationService = LocationService();
+  String? latitude;
+  String? longitude;
+  int frameSkipCount = 0;
+  int successCounter = 0;
+  bool dataSendChecker = false;
+  customDialog? customdialog;
+
   final ApiServiceAttendance _apiService = ApiServiceAttendance();
   bool _isLoading = false;
   bool _isPunching = false;
@@ -45,10 +60,101 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
-    // _getCurrentLocation();
-    _loadAttendanceData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      customdialog = customDialog(context);
+      customdialog!.showLoading("Checking permissions...");
+
+    });
+
+    Future.microtask(() async {
+      final allGranted = await _checkPermissions();
+      if (allGranted) {
+        _getCurrentLocation();
+      } else {
+        customdialog?.dismiss();
+        customdialog!.showError("Error", "Please grant all permissions to use this app.");
+      }
+    });
+  }
+  Future<void> _getCurrentLocation() async {
+    final locationSuccess = await fetchLocation();
+    if (locationSuccess) {
+      _loadAttendanceData();
+    } else {
+
+    }
   }
 
+  Future<bool> fetchLocation() async {
+    int retryCount = 0;
+    const int maxRetries = 12;
+    const Duration retryDelay = Duration(seconds: 5);
+
+    Future<bool> tryFetchLocation() async {
+      try {
+        await _requestLocationPermission();
+        await _startLocationService();
+
+        if (latitude != null && longitude != null) {
+          _incrementSuccessCounter();
+          return true;
+        }
+
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await Future.delayed(retryDelay);
+          return await tryFetchLocation();
+        }
+        return false;
+      } catch (e) {
+        print("Location fetching error: $e");
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await Future.delayed(retryDelay);
+          return await tryFetchLocation();
+        }
+        return false;
+      }
+    }
+
+    return await tryFetchLocation();
+  }
+  Future<void> _requestLocationPermission() async {
+    if (await Permission.location.isDenied) {
+      await Permission.location.request();
+    }
+    _startLocationService();
+  }
+  Future<void> _startLocationService() async {
+    await _locationService.startLocationUpdates(context, onSuccess: (locationData) {
+      if (locationData.latitude != null && locationData.longitude != null) {
+        setState(() {
+          latitude = locationData.latitude.toString();
+          longitude = locationData.longitude.toString();
+        });
+        print("latitude: $latitude, Longitude: $longitude");
+        _locationService.stopLocationUpdates();
+
+        if (!dataSendChecker && customdialog != null && Navigator.canPop(context)) {
+          Future.delayed(Duration(milliseconds: 5), () {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                 customdialog?.dismiss();
+              }
+            });
+          });
+        }
+      }
+    });
+  }
+  void _incrementSuccessCounter() {
+    successCounter++;
+    if (successCounter == 2) {
+      if (customdialog != null) {
+        customdialog?.dismiss();
+      }
+    }
+  }
   Future<void> _loadAttendanceData() async {
     setState(() {
       _isLoading = true;
@@ -75,8 +181,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         dailyLimit: 50,
         logLimit: 50,
       );
-
       setState(() {
+        print("Attendance response:"+response.toString());
         _attendanceResponse = response;
         _expandedStates.clear(); // Clear previous states
 
@@ -112,16 +218,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _punchAttendance(String action) async {
-    if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enable location services'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
     setState(() {
       _isPunching = true;
     });
@@ -130,8 +226,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final result = await _apiService.punchAttendance(
         staffId: widget.staffId,
         action: action,
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
+        latitude: double.parse(latitude!),
+        longitude: double.parse(longitude!),
         notes: 'Punched from mobile app',
       );
 
@@ -216,101 +312,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           children: [
             // Header
             Container(
-              padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 16),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFF4361EE),
-                    Color(0xFF3A0CA3),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome,',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.staffName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          // Filter button
-                          IconButton(
-                            onPressed: _openFilterScreen,
-                            icon: Stack(
-                              children: [
-                                const Icon(
-                                  Icons.filter_list,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                                if (_hasFilters)
-                                  Positioned(
-                                    right: 0,
-                                    top: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      constraints: const BoxConstraints(
-                                        minWidth: 12,
-                                        minHeight: 12,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.black.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(
@@ -326,7 +337,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                   Text(
                                     DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
                                     style: const TextStyle(
-                                      color: Colors.white,
+                                      color: Colors.black,
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -335,7 +346,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                   Text(
                                     DateFormat('h:mm a').format(DateTime.now()),
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.8),
+                                      color: Colors.black.withOpacity(0.8),
                                       fontSize: 14,
                                     ),
                                   ),
@@ -346,7 +357,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               onPressed: _loadAttendanceData,
                               icon: const Icon(
                                 Icons.refresh,
-                                color: Colors.white,
+                                color: Colors.black,
                                 size: 20,
                               ),
                               tooltip: 'Refresh',
@@ -358,7 +369,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                           children: [
                             Icon(
                               Icons.calendar_today,
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.black.withOpacity(0.8),
                               size: 16,
                             ),
                             const SizedBox(width: 8),
@@ -366,7 +377,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               child: Text(
                                 _getDateRangeText(),
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
+                                  color: Colors.black.withOpacity(0.8),
                                   fontSize: 12,
                                 ),
                               ),
@@ -378,17 +389,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                           children: [
                             Icon(
                               Icons.location_on,
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.black.withOpacity(0.8),
                               size: 16,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                _currentPosition != null
-                                    ? 'Lat: ${_currentPosition!.latitude.toStringAsFixed(4)}, Lng: ${_currentPosition!.longitude.toStringAsFixed(4)}'
+                                    latitude != null && longitude != null ? 'Lat: ${double.parse(latitude!).toStringAsFixed(4)}, Lng: ${double.parse(longitude!).toStringAsFixed(4)}'
                                     : 'Getting location...',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
+                                  color: Colors.black.withOpacity(0.8),
                                   fontSize: 12,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -396,6 +406,64 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             ),
                           ],
                         ),
+
+
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // Filter button
+                                IconButton(
+                                  onPressed: _openFilterScreen,
+                                  icon: Stack(
+                                    children: [
+                                      const Icon(
+                                        Icons.filter_list,
+                                        color: Colors.black,
+                                        size: 24,
+                                      ),
+                                      if (_hasFilters)
+                                        Positioned(
+                                          right: 0,
+                                          top: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 12,
+                                              minHeight: 12,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.person,
+                                    color: Colors.black,
+                                    size: 24,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+
                       ],
                     ),
                   ),
@@ -486,7 +554,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 ],
               ),
             ),
-
             // Recent Attendance with expandable logs
             Expanded(
               child: SingleChildScrollView(
@@ -542,7 +609,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: _getStatusColor(record.status),
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
@@ -561,11 +628,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                     padding: const EdgeInsets.all(16),
                                     child: Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                                       children: [
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
                                             children: [
                                               Row(
                                                 children: [
@@ -595,75 +662,74 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                                       color: Color(0xFF333333),
                                                     ),
                                                   ),
+                                                  if (record.hoursWorked != null &&
+                                                      record.hoursWorked!.isNotEmpty)
+                                                    const SizedBox(width: 8),
+                                                    Row(
+                                                      children: [
+                                                        Icon(
+                                                          Icons.access_time,
+                                                          size: 14,
+                                                          color: Colors.blue.shade600,
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          record.hoursWorked != null
+                                                            ? 'Worked Hours: ${record.hoursWorked!}'
+                                                            : '',
+                                                          style: TextStyle(
+                                                            fontSize: 13,
+                                                            color: Colors.blue.shade600,
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
                                                 ],
                                               ),
-                                              const SizedBox(height: 8),
-                                              if (record.hoursWorked != null &&
-                                                  record.hoursWorked!.isNotEmpty)
-                                                Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.access_time,
-                                                      size: 14,
-                                                      color: Colors.blue.shade600,
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      'Worked Hours: ${record.hoursWorked!}',
-                                                      style: TextStyle(
-                                                        fontSize: 13,
-                                                        color: Colors.blue.shade600,
-                                                        fontWeight: FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
+
                                               const SizedBox(height: 8),
                                               if (record.firstInTime != null)
                                                 Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                                  crossAxisAlignment: CrossAxisAlignment.center,
                                                   children: [
-                                                    const Icon(
-                                                      Icons.login,
-                                                      size: 14,
-                                                      color: Colors.green,
+                                                    Row(
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.login,
+                                                          size: 14,
+                                                          color: Colors.green,
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          'In: ${record.firstInTime}',
+                                                          style: const TextStyle(
+                                                            fontSize: 13,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      'In: ${record.firstInTime}',
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
-                                                        color: Colors.grey,
-                                                      ),
+
+                                                    Row(
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.logout,
+                                                          size: 14,
+                                                          color: Colors.red,
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          'Out: ${record.lastOutTime}',
+                                                          style: const TextStyle(
+                                                            fontSize: 13,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ],
-                                                ),
-                                              if (record.lastOutTime != null)
-                                                Row(
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.logout,
-                                                      size: 14,
-                                                      color: Colors.red,
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      'Out: ${record.lastOutTime}',
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
-                                                        color: Colors.grey,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              const SizedBox(height: 4),
-                                              if (logs.isNotEmpty)
-                                                Text(
-                                                  '${logs.length} log${logs.length != 1 ? 's' : ''} available',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.grey.shade600,
-                                                    fontStyle: FontStyle.italic,
-                                                  ),
                                                 ),
                                             ],
                                           ),
@@ -948,6 +1014,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
+
   Widget _buildFilterChip(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -994,17 +1061,55 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'present':
-        return Colors.green;
+        return Colors.green.withOpacity(0.3);
       case 'late':
-        return Colors.orange;
+        return Colors.orange.withOpacity(0.3);
       case 'absent':
-        return Colors.red;
+        return Colors.red.withOpacity(0.3);
       case 'early':
-        return Colors.blue;
+        return Colors.blue.withOpacity(0.3);
       case 'half day':
-        return Colors.purple;
+        return Colors.purple.withOpacity(0.3);
       default:
-        return Colors.grey;
+        return Colors.grey.withOpacity(0.3);
+    }
+  }
+
+  Future<bool> _checkPermissions() async {
+    try {
+      final List<Permission> permissions = [
+        Permission.camera,
+        Permission.location,
+      ];
+
+      if (Platform.isAndroid) {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        if (androidInfo.version.sdkInt >= 33) {
+          permissions.addAll([
+            Permission.photos,
+            Permission.videos,
+          ]);
+        } else {
+          permissions.add(Permission.storage);
+        }
+      } else if (Platform.isIOS) {
+        permissions.add(Permission.photos);
+      }
+
+      for (var permission in permissions) {
+        final status = await permission.status;
+        if (status.isDenied || status.isPermanentlyDenied) {
+          final result = await permission.request();
+          if (!result.isGranted) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    } catch (e) {
+      print("Permission check error: $e");
+      return false;
     }
   }
 }

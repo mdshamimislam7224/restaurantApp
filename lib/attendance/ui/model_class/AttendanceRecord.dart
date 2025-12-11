@@ -31,51 +31,62 @@ class AttendanceRecord {
   });
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
-    // Parse date - convert from ISO to simple date
+    // Parse date - convert from UTC to local date
     String parseDate(String dateStr) {
       try {
         if (dateStr.contains('T')) {
-          final dateTime = DateTime.parse(dateStr);
-          return DateFormat('yyyy-MM-dd').format(dateTime);
+          final utcDateTime = DateTime.parse(dateStr);
+          final localDateTime = utcDateTime.toLocal();
+          return DateFormat('yyyy-MM-dd').format(localDateTime);
         }
         return dateStr;
       } catch (e) {
+        print('Error parsing date: $dateStr, error: $e');
         return dateStr;
       }
     }
-
-    // Parse time - extract HH:mm from the weird Google Sheets format
+    // Parse time - convert UTC to local time
     String? parseTime(String? timeStr) {
-      if (timeStr == null) return null;
+      if (timeStr == null || timeStr.isEmpty) return null;
+      print('🕒 Raw time string: $timeStr'); // Debug log
+
       try {
         if (timeStr.contains('T')) {
-          final dateTime = DateTime.parse(timeStr);
-          // Check if it's a Google Sheets time-only value (year 1899)
-          if (dateTime.year == 1899) {
-            return DateFormat('HH:mm').format(dateTime);
-          } else {
-            return DateFormat('HH:mm').format(dateTime);
-          }
+          print('🕒 Contains T, parsing as datetime');
+          final utcDateTime = DateTime.parse(timeStr);
+          print('🕒 UTC DateTime: $utcDateTime');
+          print('🕒 Is UTC: ${utcDateTime.isUtc}');
+
+          final localDateTime = utcDateTime.toLocal();
+          print('🕒 Local DateTime: $localDateTime');
+
+          final formatted = DateFormat('HH:mm').format(localDateTime);
+          print('🕒 Formatted: $formatted');
+
+          return formatted;
         }
         return timeStr;
       } catch (e) {
+        print('🕒 Error parsing time: $timeStr, error: $e');
         return timeStr;
       }
     }
 
     // Parse hours worked - handle the weird format
     String? parseHoursWorked(String? hoursWorked) {
-      if (hoursWorked == null) return null;
+      if (hoursWorked == null || hoursWorked.isEmpty) return null;
       try {
         if (hoursWorked.contains('T')) {
           final dateTime = DateTime.parse(hoursWorked);
           // Extract hours and minutes
           final hours = dateTime.hour;
           final minutes = dateTime.minute;
-          return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+          final seconds = dateTime.second;
+          return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
         }
         return hoursWorked;
       } catch (e) {
+        print('Error parsing hours worked: $hoursWorked, error: $e');
         return hoursWorked;
       }
     }
@@ -127,42 +138,47 @@ class AttendanceLog {
   });
 
   factory AttendanceLog.fromJson(Map<String, dynamic> json) {
-    // Parse timestamp
+    // Parse timestamp - convert UTC to local
     DateTime parseTimestamp(String? timestampStr) {
       try {
         if (timestampStr != null && timestampStr.contains('T')) {
-          return DateTime.parse(timestampStr);
+          final utcDateTime = DateTime.parse(timestampStr).toUtc();
+          return utcDateTime.toLocal();
         }
       } catch (e) {
-        print('Error parsing timestamp: $e');
+        print('Error parsing timestamp: $timestampStr, error: $e');
       }
       return DateTime.now();
     }
 
-    // Parse date - convert from ISO to simple date
+    // Parse date - convert from UTC to local date
     String parseDate(String? dateStr) {
-      if (dateStr == null) return '';
+      if (dateStr == null || dateStr.isEmpty) return '';
       try {
         if (dateStr.contains('T')) {
-          final dateTime = DateTime.parse(dateStr);
-          return DateFormat('yyyy-MM-dd').format(dateTime);
+          final utcDateTime = DateTime.parse(dateStr);
+          final localDateTime = utcDateTime.toLocal();
+          return DateFormat('yyyy-MM-dd').format(localDateTime);
         }
         return dateStr;
       } catch (e) {
+        print('Error parsing date: $dateStr, error: $e');
         return dateStr;
       }
     }
 
-    // Parse time - extract HH:mm from the weird Google Sheets format
+    // Parse time - convert UTC to local time
     String parseTime(String? timeStr) {
-      if (timeStr == null) return '';
+      if (timeStr == null || timeStr.isEmpty) return '';
       try {
         if (timeStr.contains('T')) {
-          final dateTime = DateTime.parse(timeStr);
-          return DateFormat('HH:mm').format(dateTime);
+          final utcDateTime = DateTime.parse(timeStr).toUtc();
+          final localDateTime = utcDateTime.toLocal();
+          return DateFormat('HH:mm').format(localDateTime);
         }
         return timeStr;
       } catch (e) {
+        print('Error parsing time: $timeStr, error: $e');
         return timeStr;
       }
     }
