@@ -13,8 +13,13 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
   List<Map<String, dynamic>> allCostingRecords = [];
   List<Map<String, dynamic>> filteredCostingRecords = [];
   String _selectedFilterType = "All";
-  String? _idDate;
+  String? _selectedDateFilter;
+  DateTime? _selectedDate;
 
+  // Add date range filter variables
+  DateTime? _startDate;
+  DateTime? _endDate;
+  String _dateFilterType = "single"; // "single", "range", or "all"
 
   @override
   void initState() {
@@ -33,162 +38,241 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
 
   void _filterCostingRecords() {
     setState(() {
-      if (_selectedFilterType == "All") {
-        filteredCostingRecords = allCostingRecords;
-      } else {
-        filteredCostingRecords = allCostingRecords
+      // First filter by type
+      List<Map<String, dynamic>> tempRecords = allCostingRecords;
+
+      if (_selectedFilterType != "All") {
+        tempRecords = tempRecords
             .where((record) => record['type'] == _selectedFilterType)
             .toList();
-      }});
-    }
+      }
 
-        void deleteCostingRecord(String id) async {
-      final db = await DBHelper.db;
-      await db.delete('costing_records', where: 'id = ?', whereArgs: [id]);
-      loadCostingRecords();
-    }
+      // Then filter by date
+      if (_dateFilterType == "single" && _selectedDate != null) {
+        String dateString = _selectedDate!.toIso8601String().split("T").first;
+        tempRecords = tempRecords
+            .where((record) => record['date'] == dateString)
+            .toList();
+      } else if (_dateFilterType == "range" && _startDate != null && _endDate != null) {
+        tempRecords = tempRecords.where((record) {
+          try {
+            DateTime recordDate = DateTime.parse(record['date']);
+            return recordDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+                recordDate.isBefore(_endDate!.add(const Duration(days: 1)));
+          } catch (e) {
+            return false;
+          }
+        }).toList();
+      }
 
-    void showUpdateDialog(Map<String, dynamic> record) {
-      final TextEditingController descController =
-      TextEditingController(text: record['description']);
-      final TextEditingController amountController =
-      TextEditingController(text: record['amount'].toString());
-      String selectedType = record['type'];
-      String selectedStatus = record['paymentStatus'];
+      filteredCostingRecords = tempRecords;
+    });
+  }
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text("Update Costing Record"),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: selectedType,
-                    items: [
-                      "Ingredients",
-                      "Meal Bill",
-                      "Rent",
-                      "Staff Salary",
-                      "Bill",
-                      "Maintenance",
-                      "Others"
-                    ]
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) selectedType = val;
+  void deleteCostingRecord(String id) async {
+    final db = await DBHelper.db;
+    await db.delete('costing_records', where: 'id = ?', whereArgs: [id]);
+    loadCostingRecords();
+  }
+
+  // Add this function to show date filter dialog
+  void _showDateFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Filter by Date"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: const Text("All Dates"),
+                  leading: Radio<String>(
+                    value: "all",
+                    groupValue: _dateFilterType,
+                    onChanged: (value) {
+                      setState(() {
+                        _dateFilterType = value!;
+                        _selectedDate = null;
+                        _startDate = null;
+                        _endDate = null;
+                      });
+                      Navigator.pop(context);
+                      _filterCostingRecords();
                     },
-                    decoration: const InputDecoration(labelText: "Type"),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descController,
-                    decoration: const InputDecoration(
-                      labelText: "Description",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Amount",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: selectedStatus,
-                    items: ['Pending', 'Paid']
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) selectedStatus = val;
+                ),
+                ListTile(
+                  title: const Text("Single Date"),
+                  leading: Radio<String>(
+                    value: "single",
+                    groupValue: _dateFilterType,
+                    onChanged: (value) {
+                      setState(() {
+                        _dateFilterType = value!;
+                      });
                     },
-                    decoration: const InputDecoration(labelText: "Status"),
                   ),
-                ],
-              ),
+                  trailing: _dateFilterType == "single"
+                      ? TextButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate ?? DateTime.now(),
+                        firstDate: DateTime(2023),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _selectedDate = picked;
+                        });
+                      }
+                    },
+                    child: Text(
+                      _selectedDate != null
+                          ? DateFormat('dd/MM/yyyy').format(_selectedDate!)
+                          : "Select Date",
+                    ),
+                  )
+                      : null,
+                ),
+                ListTile(
+                  title: const Text("Date Range"),
+                  leading: Radio<String>(
+                    value: "range",
+                    groupValue: _dateFilterType,
+                    onChanged: (value) {
+                      setState(() {
+                        _dateFilterType = value!;
+                      });
+                    },
+                  ),
+                  subtitle: _dateFilterType == "range"
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _startDate ?? DateTime.now(),
+                            firstDate: DateTime(2023),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _startDate = picked;
+                            });
+                          }
+                        },
+                        child: Text(
+                          _startDate != null
+                              ? "From: ${DateFormat('dd/MM/yyyy').format(_startDate!)}"
+                              : "Select Start Date",
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _endDate ?? DateTime.now(),
+                            firstDate: _startDate ?? DateTime(2023),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _endDate = picked;
+                            });
+                          }
+                        },
+                        child: Text(
+                          _endDate != null
+                              ? "To: ${DateFormat('dd/MM/yyyy').format(_endDate!)}"
+                              : "Select End Date",
+                        ),
+                      ),
+                    ],
+                  )
+                      : null,
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel"),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  await DBHelper.updateCostingRecord(
-                      id: record['id'].toString(),
-                      date: record['date'],
-                      type: selectedType,
-                      description: descController.text,
-                      amount: double.parse(amountController.text),
-                      paymentStatus: selectedStatus);
-                  Navigator.pop(context);
-                  loadCostingRecords();
-                },
-                child: const Text("Update"),
-              ),
-            ],
-          );
-        },
-      );
-    }
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _dateFilterType = "all";
+                  _selectedDate = null;
+                  _startDate = null;
+                  _endDate = null;
+                });
+                Navigator.pop(context);
+                _filterCostingRecords();
+              },
+              child: const Text("Clear"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _filterCostingRecords();
+              },
+              child: const Text("Apply"),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    Widget _buildSummaryGrid(BuildContext context) {
-      double totalCost = filteredCostingRecords.fold(
-          0, (sum, item) => sum + (item['amount'] as double));
-      double paidCost = filteredCostingRecords
-          .where((item) => item['paymentStatus'] == 'Paid')
-          .fold(0, (sum, item) => sum + (item['amount'] as double));
-      double pendingCost = totalCost - paidCost;
+  Widget _buildSummaryGrid(BuildContext context) {
+    double totalCost = filteredCostingRecords.fold(
+        0, (sum, item) => sum + (item['amount'] as double));
+    double paidCost = filteredCostingRecords
+        .where((item) => item['paymentStatus'] == 'Paid')
+        .fold(0, (sum, item) => sum + (item['amount'] as double));
+    double pendingCost = totalCost - paidCost;
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: GridView.count(
-          shrinkWrap: true,
-          crossAxisCount: 3,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          physics: const NeverScrollableScrollPhysics(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: GridView.count(
+        shrinkWrap: true,
+        crossAxisCount: 3,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          _buildSummaryCard("Total", totalCost, Theme.of(context).primaryColor, Colors.white),
+          _buildSummaryCard("Paid", paidCost, Colors.green, Colors.green.shade50),
+          _buildSummaryCard("Pending", pendingCost, Colors.orange, Colors.orange.shade50),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(String title, double amount, Color color, Color bgColor) {
+    return Card(
+      elevation: 1,
+      color: bgColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildSummaryCard("Total", totalCost, Theme.of(context).primaryColor, Colors.white),
-            _buildSummaryCard("Paid", paidCost, Colors.green, Colors.green.shade50),
-            _buildSummaryCard("Pending", pendingCost, Colors.orange, Colors.orange.shade50),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54)),
+            const SizedBox(height: 4),
+            Text("৳${amount.toStringAsFixed(2)}",
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
-      );
-    }
-
-    Widget _buildSummaryCard(String title, double amount, Color color,Color bgColor) {
-      return Card(
-        elevation: 1,
-        color: bgColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54)),
-              const SizedBox(height: 4),
-              Text("৳${amount.toStringAsFixed(2)}",
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-            ],
-          ),
-        ),
-      );
-    }
-
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,49 +282,129 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildSummaryGrid(context),
+
+            // Filter Controls Section
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: DropdownButtonFormField<String>(
-                value: _selectedFilterType,
-                decoration: InputDecoration(
-                  labelText: "Filter by Type",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                items: [
-                  "All",
-                  "Ingredients",
-                  "Meal Bill",
-                  "Rent",
-                  "Staff Salary",
-                  "Bill",
-                  "Maintenance",
-                  "Others"
-                ]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() {
-                      _selectedFilterType = val;
-                      _filterCostingRecords();
-                    });
-                  }
-                },
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Filters",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Type Filter
+                      DropdownButtonFormField<String>(
+                        value: _selectedFilterType,
+                        decoration: InputDecoration(
+                          labelText: "Filter by Type",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        items: [
+                          "All",
+                          "Ingredients",
+                          "Meal Bill",
+                          "Rent",
+                          "Staff Salary",
+                          "Bill",
+                          "Maintenance",
+                          "Others"
+                        ]
+                            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _selectedFilterType = val;
+                              _filterCostingRecords();
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      // Date Filter Button
+                      ElevatedButton.icon(
+                        onPressed: _showDateFilterDialog,
+                        icon: const Icon(Icons.calendar_today, size: 18),
+                        label: Text(
+                          _dateFilterType == "all"
+                              ? "All Dates"
+                              : _dateFilterType == "single" && _selectedDate != null
+                              ? DateFormat('dd/MM/yyyy').format(_selectedDate!)
+                              : _dateFilterType == "range" && _startDate != null && _endDate != null
+                              ? "${DateFormat('dd/MM/yyyy').format(_startDate!)} - ${DateFormat('dd/MM/yyyy').format(_endDate!)}"
+                              : "Filter by Date",
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade50,
+                          foregroundColor: Colors.blue.shade800,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 16),
-            // The ListView.builder is now inside the SingleChildScrollView,
-            // so we must remove the Expanded widget and let it size itself
-            // with shrinkWrap.
+
+            // Records List
+            const SizedBox(height: 8),
             filteredCostingRecords.isEmpty
-                ? const Center(child: Text("No records found."))
+                ? Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.receipt_long,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No records found",
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  if (_dateFilterType != "all" || _selectedFilterType != "All")
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _dateFilterType = "all";
+                          _selectedFilterType = "All";
+                          _selectedDate = null;
+                          _startDate = null;
+                          _endDate = null;
+                        });
+                        _filterCostingRecords();
+                      },
+                      child: const Text("Clear all filters"),
+                    ),
+                ],
+              ),
+            )
                 : ListView.builder(
               itemCount: filteredCostingRecords.length,
-              shrinkWrap: true, // Key change: size to its children
-              physics: const NeverScrollableScrollPhysics(), // Key change: let parent scroll
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               itemBuilder: (context, index) {
                 final record = filteredCostingRecords[index];
                 final isPaid = record['paymentStatus'] == 'Paid';
@@ -249,6 +413,15 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                 final buttonColor = isPaid ? Colors.orange.shade100 : Colors.green.shade100;
                 final textColor = isPaid ? Colors.orange.shade800 : Colors.green.shade800;
                 final newStatus = isPaid ? 'Pending' : 'Paid';
+
+                // Format date for display
+                String displayDate = record['date'];
+                try {
+                  DateTime date = DateTime.parse(record['date']);
+                  displayDate = DateFormat('dd/MM/yyyy').format(date);
+                } catch (e) {
+                  // Keep original format if parsing fails
+                }
 
                 return Dismissible(
                   key: Key(record['id'].toString()),
@@ -304,9 +477,21 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                           style: const TextStyle(color: Colors.white),
                         ),
                       ),
-                      title: Text(
-                        record['type'],
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      title: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            record['type'],
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            displayDate,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
                       ),
                       subtitle: Text(record['description']),
                       trailing: Column(
@@ -349,7 +534,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                 );
               },
             ),
-            SizedBox(height: 80),
+            const SizedBox(height: 80),
           ],
         ),
       ),
@@ -372,8 +557,12 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
 
     String selectedType = "Ingredients";
     String selectedStatus = "Pending";
+
+    // Initialize with current date
     String selectedDate = DateTime.now().toIso8601String().split("T").first;
-    _idDate = DateFormat('ddMMMyyyy').format(DateTime.now()); // Initialize _idDate
+
+    // Local variable for ID generation
+    String? idDate;
 
     showDialog(
       context: context,
@@ -453,7 +642,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                         );
                         if (picked != null) {
                           selectedDate = picked.toIso8601String().split("T").first;
-                          _idDate = DateFormat('ddMMMyyyy').format(picked);
+                          idDate = DateFormat('ddMMMyyyy').format(picked);
                         }
                       },
                     ),
@@ -487,7 +676,12 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                             onPressed: () async {
                               final description = descriptionController.text.trim();
                               final amount = double.tryParse(amountController.text) ?? 0.0;
-                              final costingID = generateSaleIdFromDate(_idDate!);
+
+                              // Generate ID from selected date or current date
+                              final DateTime dateForId = idDate != null
+                                  ? DateFormat('ddMMMyyyy').parse(idDate!)
+                                  : DateTime.now();
+                              final costingID = generateSaleIdFromDate(dateForId.toString());
 
                               if (description.isNotEmpty && amount > 0) {
                                 await DBHelper.insertCostingRecord(
@@ -528,4 +722,130 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
     final timePart = "${now.hour}${now.minute}${now.second}${now.millisecond}";
     return "${date}_$timePart";
   }
+  void showUpdateDialog(Map<String, dynamic> record) {
+    final TextEditingController descController =
+    TextEditingController(text: record['description']);
+    final TextEditingController amountController =
+    TextEditingController(text: record['amount'].toString());
+    String selectedType = record['type'];
+    String selectedStatus = record['paymentStatus'];
+    String selectedDate = record['date']; // Get date from record
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("Update Costing Record"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Date Picker Field
+                TextFormField(
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: "Date",
+                    border: const OutlineInputBorder(),
+                    suffixIcon: const Icon(Icons.calendar_today),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                  controller: TextEditingController(text: selectedDate),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.parse(selectedDate),
+                      firstDate: DateTime(2023),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      selectedDate = picked.toIso8601String().split("T").first;
+                      Navigator.of(context).pop();
+                      showUpdateDialog(record);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  items: [
+                    "Ingredients",
+                    "Meal Bill",
+                    "Rent",
+                    "Staff Salary",
+                    "Bill",
+                    "Maintenance",
+                    "Others"
+                  ]
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) selectedType = val;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: "Type",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  decoration: const InputDecoration(
+                    labelText: "Description",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Amount",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedStatus,
+                  items: ['Pending', 'Paid']
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) selectedStatus = val;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: "Status",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await DBHelper.updateCostingRecord(
+                    id: record['id'].toString(),
+                    date: selectedDate, // Use updated date
+                    type: selectedType,
+                    description: descController.text,
+                    amount: double.parse(amountController.text),
+                    paymentStatus: selectedStatus);
+                Navigator.pop(context);
+                loadCostingRecords();
+              },
+              child: const Text("Update"),
+            ),
+          ],
+        );
+      },
+    );
   }
+// Keep your existing _showAddCostDialog and generateSaleIdFromDate methods here
+// ... (they remain the same as in your original code)
+}

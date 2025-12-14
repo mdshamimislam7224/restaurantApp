@@ -6,7 +6,7 @@ import 'AttendanceRecord.dart';
 
 class ApiServiceAttendance {
   // Your web app URL
-  static const String _baseUrl = 'https://script.google.com/macros/s/AKfycbynWJ0RVBsFKMQsWtchRfDPtQjcqPnwFrHjqUrk6JbCOLBufr0M6blcn8LklFBoEr5r/exec';
+  static const String _baseUrl = 'https://script.google.com/macros/s/AKfycbws_XGH3vXCHp171G7aw9xln_qSOSQWy89u74lje2P2t-imtIfWbJMQYQBnY8Fm4wOFXA/exec';
 
   // ============================================================================
   // ✅ FIXED: POST REQUEST WITH MANUAL REDIRECT HANDLING
@@ -155,10 +155,10 @@ class ApiServiceAttendance {
     String? startDate,
     String? endDate,
     String? date,
-    int dailyPage = 1,
-    int logPage = 1,
-    int dailyLimit = 50,
-    int logLimit = 50,
+    int? dailyPage,
+    int? logPage,
+    int? dailyLimit,
+    int? logLimit,
   }) async {
     try {
       // Build request body (exactly like Postman)
