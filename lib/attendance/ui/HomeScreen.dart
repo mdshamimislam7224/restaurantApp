@@ -32,10 +32,6 @@ class _HomeScreenState extends State<HomeScreen> {
         staffName: widget.staffName,
       ),
       AllStaffAttendanceScreen(),
-      // HistoryScreen(
-      //   staffId: widget.staffId,
-      //   staffName: widget.staffName,
-      // ),
       ProfileScreen(
         staffId: widget.staffId,
         staffName: widget.staffName,
@@ -82,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.history, size: 24),
-              label: 'History',
+              label: 'All Attendance',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person, size: 24),

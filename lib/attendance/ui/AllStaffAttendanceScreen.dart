@@ -1,256 +1,420 @@
+// all_staff_attendance_screen.dart
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-
-import 'AttendanceCard.dart';
-import 'model_class/ApiServiceAttendance.dart';
+import 'package:restaurant_inventory/attendance/ui/model_class/ApiServiceAttendance.dart';
 import 'model_class/AttendanceRecord.dart';
-import 'FilterScreen.dart'; // Import your filter screen
 
 class AllStaffAttendanceScreen extends StatefulWidget {
-  const AllStaffAttendanceScreen({super.key});
+  const AllStaffAttendanceScreen({Key? key}) : super(key: key);
 
   @override
-  State<AllStaffAttendanceScreen> createState() => _AllStaffAttendanceScreenState();
+  _AllStaffAttendanceScreenState createState() => _AllStaffAttendanceScreenState();
 }
 
 class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
+  late Future<AttendanceResponse> _attendanceFuture;
   final ApiServiceAttendance _apiService = ApiServiceAttendance();
-  bool _isLoading = false;
-  String _errorMessage = '';
 
-  // Store attendance data
-  AttendanceResponse? _attendanceResponse;
+  // Search and filter variables
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  DateTime? _startDate;
+  DateTime? _endDate;
+  bool _showFilters = false;
 
-  // Track expanded states
-  Map<String, bool> _expandedStates = {};
+  // Pagination variables
+  int _dailyCurrentPage = 1;
+  int _logCurrentPage = 1;
+  final int _dailyLimit =2;
+  final int _logLimit = 2;
+  bool _hasMoreDaily = true;
+  bool _hasMoreLog = true;
+  bool _isLoadingMore = false;
 
-  // Group daily attendance by staff
-  Map<String, List<AttendanceRecord>> _staffAttendanceMap = {};
+  // Track expanded states PER STAFF
+  final Map<String, bool> _expandedStaff = {};
+  final Map<String, Map<String, bool>> _expandedDates = {};
 
-  // Group logs by staff and date
-  Map<String, Map<String, List<AttendanceLog>>> _staffLogsMap = {};
-
-  // Filter state
-  Map<String, dynamic> _filters = {};
-  bool _hasFilters = false;
+  // Data storage
+  List<AttendanceRecord> _allDailyRecords = [];
+  List<AttendanceLog> _allLogRecords = [];
+  AttendanceResponse? _currentResponse;
 
   @override
   void initState() {
     super.initState();
-    // Initialize with current month
-    final today = DateTime.now();
-    _filters = {
-      'startDate': DateFormat('yyyy-MM-dd').format(DateTime(today.year, today.month, 1)),
-      'endDate': DateFormat('yyyy-MM-dd').format(DateTime(today.year, today.month + 1, 0)),
-      'staffId': null, // null means all staff
-    };
-    _loadAllStaffAttendance();
+    // Set default date range to current month
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, 1);
+    _endDate = now;
+    _attendanceFuture = _fetchAttendanceData();
   }
 
-  Future<void> _loadAllStaffAttendance() async {
+  Future<AttendanceResponse> _fetchAttendanceData({bool loadMore = false}) async {
+    try {
+      if (!loadMore) {
+        _dailyCurrentPage = 1;
+        _logCurrentPage = 1;
+        _allDailyRecords.clear();
+        _allLogRecords.clear();
+      }
+
+      final response = await _apiService.getAttendancespecificStaff(
+        startDate: _startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : null,
+        endDate: _endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : null,
+        dailyPage: _dailyCurrentPage,
+        logPage: _logCurrentPage,
+        dailyLimit: _dailyLimit,
+        logLimit: _logLimit,
+      );
+
+      if (loadMore) {
+        // Append new data
+        _allDailyRecords.addAll(response.dailyAttendance);
+        _allLogRecords.addAll(response.attendanceLog);
+
+        // Update pagination flags
+        _hasMoreDaily = response.dailyPagination.hasNextPage;
+        _hasMoreLog = response.logPagination.hasNextPage;
+
+        // Create updated response with combined data
+        return AttendanceResponse(
+          dailyAttendanceCount: response.dailyAttendanceCount,
+          attendanceLogCount: response.attendanceLogCount,
+          filters: response.filters,
+          dailyAttendance: List.from(_allDailyRecords),
+          attendanceLog: List.from(_allLogRecords),
+          dailyPagination: response.dailyPagination,
+          logPagination: response.logPagination,
+        );
+      } else {
+        // First load
+        _allDailyRecords = response.dailyAttendance;
+        _allLogRecords = response.attendanceLog;
+        _hasMoreDaily = response.dailyPagination.hasNextPage;
+        _hasMoreLog = response.logPagination.hasNextPage;
+        return response;
+      }
+    } catch (e) {
+      print('Error fetching data: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _loadMoreData() async {
+    if (_isLoadingMore || (!_hasMoreDaily && !_hasMoreLog)) return;
+
     setState(() {
-      _isLoading = true;
+      _isLoadingMore = true;
     });
 
     try {
-      final response = await _apiService.getAllAttendance(
-        startDate: _filters['startDate'],
-        endDate: _filters['endDate'],
-        dailyLimit: 50,
-        logLimit: 100,
-      );
+      _dailyCurrentPage++;
+      _logCurrentPage++;
+
+      final response = await _fetchAttendanceData(loadMore: true);
 
       setState(() {
-        _attendanceResponse = response;
-        _organizeData(response);
+        _currentResponse = response;
+        _isLoadingMore = false;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load attendance: $e';
+        _isLoadingMore = false;
+        _dailyCurrentPage--;
+        _logCurrentPage--;
       });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      print('Error loading more data: $e');
     }
   }
 
-  void _organizeData(AttendanceResponse response) {
-    // Group daily attendance by staff ID
-    final Map<String, List<AttendanceRecord>> staffMap = {};
-
-    for (var record in response.dailyAttendance) {
-      if (!staffMap.containsKey(record.staffId)) {
-        staffMap[record.staffId] = [];
-      }
-      staffMap[record.staffId]!.add(record);
-
-      // Initialize expanded state
-      final key = '${record.staffId}_${record.date}';
-      _expandedStates[key] = false;
-    }
-
-    // Group logs by staff ID and date
-    final Map<String, Map<String, List<AttendanceLog>>> logsMap = {};
-
-    for (var log in response.attendanceLog) {
-      if (!logsMap.containsKey(log.staffId)) {
-        logsMap[log.staffId] = {};
-      }
-
-      if (!logsMap[log.staffId]!.containsKey(log.date)) {
-        logsMap[log.staffId]![log.date] = [];
-      }
-
-      logsMap[log.staffId]![log.date]!.add(log);
-    }
-
+  void _onRefresh() {
     setState(() {
-      _staffAttendanceMap = staffMap;
-      _staffLogsMap = logsMap;
+      _attendanceFuture = _fetchAttendanceData();
+      _expandedStaff.clear();
+      _expandedDates.clear();
     });
   }
 
-  // Get logs for a specific staff and date
-  List<AttendanceLog> _getLogsForStaffAndDate(String staffId, String date) {
-    return _staffLogsMap[staffId]?[date] ?? [];
-  }
-
-  void _toggleExpand(String staffId, String date) {
-    final key = '${staffId}_$date';
+  void _applyFilters() {
     setState(() {
-      _expandedStates[key] = !(_expandedStates[key] ?? false);
+      _showFilters = false;
+      _attendanceFuture = _fetchAttendanceData();
+      _expandedStaff.clear();
+      _expandedDates.clear();
     });
   }
 
-  // Open filter screen
-  Future<void> _openFilterScreen() async {
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FilterScreen(
-          initialStartDate: _filters['startDate'],
-          initialEndDate: _filters['endDate'],
-          staffId: _filters['staffId'] ?? '',
-        ),
-      ),
-    );
-
-    if (result != null) {
-      setState(() {
-        _filters.addAll(result);
-        _hasFilters = result.isNotEmpty;
-      });
-      await _loadAllStaffAttendance();
-    }
-  }
-
-  // Clear all filters
   void _clearFilters() {
     setState(() {
-      _filters = {
-        'startDate': null,
-        'endDate': null,
-        'staffId': null,
-      };
-      _hasFilters = false;
+      _searchQuery = '';
+      _searchController.clear();
+      final now = DateTime.now();
+      _startDate = DateTime(now.year, now.month, 1);
+      _endDate = now;
+      _showFilters = false;
+      _attendanceFuture = _fetchAttendanceData();
+      _expandedStaff.clear();
+      _expandedDates.clear();
     });
-    _loadAllStaffAttendance();
+  }
+
+  Future<void> _selectStartDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _startDate = picked;
+      });
+    }
+  }
+
+  Future<void> _selectEndDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _endDate = picked;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('All Staff Attendance'),
-        backgroundColor: const Color(0xFF4361EE),
+        title: const Text(
+          'Attendance Hierarchy',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF1E293B), size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
-          // Filter button with badge
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.filter_list),
-                onPressed: _openFilterScreen,
-              ),
-              if (_hasFilters)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 12,
-                      minHeight: 12,
-                    ),
-                  ),
-                ),
-            ],
+          IconButton(
+            icon: Icon(_showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+                color: _showFilters ? const Color(0xFF4F46E5) : const Color(0xFF1E293B)),
+            onPressed: () {
+              setState(() {
+                _showFilters = !_showFilters;
+              });
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadAllStaffAttendance,
+            icon: const Icon(Icons.refresh, color: Color(0xFF4F46E5)),
+            onPressed: _onRefresh,
           ),
         ],
       ),
       body: Column(
         children: [
-          // Filter chips (visible when filters are applied)
-          if (_hasFilters)
+          // Search Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value.toLowerCase();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Search by staff name or ID...',
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF64748B)),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear, color: Color(0xFF64748B)),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            ),
+          ),
+
+          // Filters Panel
+          if (_showFilters)
             Container(
+              padding: const EdgeInsets.all(16),
               color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
+              child: Column(
                 children: [
-                  const Text(
-                    'Filters:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Wrap(
-                    spacing: 8,
+                  // Date Range Selection
+                  const Row(
                     children: [
-                      if (_filters['startDate'] != null)
-                        _buildFilterChip(
-                          'From: ${_filters['startDate']}',
+                      Icon(Icons.date_range, size: 18, color: Color(0xFF4F46E5)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Date Range',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
                         ),
-                      if (_filters['endDate'] != null)
-                        _buildFilterChip(
-                          'To: ${_filters['endDate']}',
-                        ),
-                      if (_filters['staffId'] != null && _filters['staffId'] != '')
-                        _buildFilterChip(
-                          'Staff: ${_filters['staffId']}',
-                        ),
-                      InkWell(
-                        onTap: _clearFilters,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade50,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.clear, size: 14, color: Colors.red),
-                              SizedBox(width: 4),
-                              Text(
-                                'Clear All',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.red,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'From',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () => _selectStartDate(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.calendar_today, size: 16, color: Color(0xFF64748B)),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _startDate != null
+                                          ? DateFormat('dd/MM/yyyy').format(_startDate!)
+                                          : 'Select date',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'To',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () => _selectEndDate(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.calendar_today, size: 16, color: Color(0xFF64748B)),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _endDate != null
+                                          ? DateFormat('dd/MM/yyyy').format(_endDate!)
+                                          : 'Select date',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Filter Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _applyFilters,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF4F46E5),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check, size: 18),
+                              SizedBox(width: 8),
+                              Text('Apply Filters'),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _clearFilters,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFEF4444),
+                            side: const BorderSide(color: Color(0xFFEF4444)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.clear, size: 18),
+                              SizedBox(width: 8),
+                              Text('Clear'),
                             ],
                           ),
                         ),
@@ -260,56 +424,29 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                 ],
               ),
             ),
+
+          // Main Content
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildAttendanceList(),
-          ),
-        ],
-      ),
-    );
-  }
+            child: FutureBuilder<AttendanceResponse>(
+              future: _attendanceFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting && !_isLoadingMore) {
+                  return _buildLoadingState();
+                }
 
-  Widget _buildFilterChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE3F2FD),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF1976D2),
-            ),
-          ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () {
-              // Remove specific filter
-              if (label.startsWith('From:')) {
-                setState(() {
-                  _filters.remove('startDate');
-                });
-              } else if (label.startsWith('To:')) {
-                setState(() {
-                  _filters.remove('endDate');
-                });
-              } else if (label.startsWith('Staff:')) {
-                setState(() {
-                  _filters.remove('staffId');
-                });
-              }
-              _loadAllStaffAttendance();
-            },
-            child: const Icon(
-              Icons.close,
-              size: 14,
-              color: Color(0xFF1976D2),
+                if (snapshot.hasError) {
+                  return _buildErrorState(snapshot.error.toString());
+                }
+
+                if (!snapshot.hasData) {
+                  return _buildEmptyState();
+                }
+
+                final data = snapshot.data!;
+                _currentResponse = data;
+
+                return _buildHierarchy(data);
+              },
             ),
           ),
         ],
@@ -317,514 +454,930 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     );
   }
 
-  Widget _buildAttendanceList() {
-    if (_staffAttendanceMap.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.group,
-              size: 64,
-              color: Colors.grey.withOpacity(0.3),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _hasFilters
-                  ? 'No attendance records for the selected filters'
-                  : 'No attendance records found',
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_hasFilters)
-              ElevatedButton(
-                onPressed: _clearFilters,
-                child: const Text('Clear Filters'),
-              )
-            else
-              ElevatedButton(
-                onPressed: _loadAllStaffAttendance,
-                child: const Text('Refresh'),
-              ),
-          ],
-        ),
-      );
+  Widget _buildHierarchy(AttendanceResponse data) {
+    // Group attendance by staff
+    final staffAttendance = <String, List<AttendanceRecord>>{};
+    for (var record in data.dailyAttendance) {
+      staffAttendance.putIfAbsent(record.staffId, () => []);
+      staffAttendance[record.staffId]!.add(record);
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // Summary card
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF4361EE),
-                  Color(0xFF3A0CA3),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildSummaryItem(
-                  _staffAttendanceMap.length.toString(),
-                  'Staff',
-                  Icons.group,
-                  Colors.white,
-                ),
-                _buildSummaryItem(
-                  _attendanceResponse?.dailyAttendance.length.toString() ?? '0',
-                  'Records',
-                  Icons.list_alt,
-                  Colors.white,
-                ),
-                _buildSummaryItem(
-                  _attendanceResponse?.attendanceLog.length.toString() ?? '0',
-                  'Logs',
-                  Icons.history,
-                  Colors.white,
-                ),
-              ],
-            ),
-          ),
+    // Group logs by staff and date
+    final staffDateLogs = <String, Map<String, List<AttendanceLog>>>{};
+    for (var log in data.attendanceLog) {
+      if (!staffDateLogs.containsKey(log.staffId)) {
+        staffDateLogs[log.staffId] = {};
+      }
+      if (!staffDateLogs[log.staffId]!.containsKey(log.date)) {
+        staffDateLogs[log.staffId]![log.date] = [];
+      }
+      staffDateLogs[log.staffId]![log.date]!.add(log);
+    }
 
-          // Attendance list by staff
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Staff Attendance',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF333333),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ..._staffAttendanceMap.entries.map((entry) {
-                  final staffId = entry.key;
-                  final staffRecords = entry.value;
+    // Filter staff based on search query
+    final filteredStaffIds = staffAttendance.keys.where((staffId) {
+      if (_searchQuery.isEmpty) return true;
 
-                  // Get staff name from first record
-                  final staffName = staffRecords.isNotEmpty ? staffRecords.first.name : 'Unknown';
+      final firstRecord = staffAttendance[staffId]!.first;
+      final name = firstRecord.name.toLowerCase();
+      final id = staffId.toLowerCase();
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        // Staff header
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8F9FA),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(12),
-                              topRight: Radius.circular(12),
-                            ),
-                            border: Border(
-                              bottom: BorderSide(
-                                color: Colors.grey.withOpacity(0.1),
-                              ),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF4361EE).withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF4361EE),
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      staffName,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF333333),
-                                      ),
-                                    ),
-                                    Text(
-                                      'ID: $staffId',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF4361EE).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  '${staffRecords.length} days',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF4361EE),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+      return name.contains(_searchQuery) || id.contains(_searchQuery);
+    }).toList();
 
-                        // Staff attendance records
-                        ...staffRecords.map((record) {
-                          final isExpanded = _expandedStates['${staffId}_${record.date}'] ?? false;
-                          final logs = _getLogsForStaffAndDate(staffId, record.date);
+    // Sort by name
+    filteredStaffIds.sort((a, b) {
+      final nameA = staffAttendance[a]!.first.name.toLowerCase();
+      final nameB = staffAttendance[b]!.first.name.toLowerCase();
+      return nameA.compareTo(nameB);
+    });
 
-                          return Container(
-                            margin: const EdgeInsets.all(0),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                top: BorderSide(
-                                  color: Colors.grey.withOpacity(0.1),
-                                ),
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                // Daily record
-                                GestureDetector(
-                                  onTap: () => _toggleExpand(staffId, record.date),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Date and status
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 4,
-                                                    ),
-                                                    decoration: BoxDecoration(
-                                                      color: _getStatusColor(record.status),
-                                                      borderRadius: BorderRadius.circular(12),
-                                                    ),
-                                                    child: Text(
-                                                      record.status,
-                                                      style: const TextStyle(
-                                                        fontSize: 12,
-                                                        fontWeight: FontWeight.w500,
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Text(
-                                                    record.date,
-                                                    style: const TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: Color(0xFF333333),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 8),
-                                              if (record.firstInTime != null || record.lastOutTime != null)
-                                                Row(
-                                                  children: [
-                                                    if (record.firstInTime != null)
-                                                      Row(
-                                                        children: [
-                                                          const Icon(
-                                                            Icons.login,
-                                                            size: 14,
-                                                            color: Colors.green,
-                                                          ),
-                                                          const SizedBox(width: 4),
-                                                          Text(
-                                                            record.firstInTime!,
-                                                            style: const TextStyle(
-                                                              fontSize: 12,
-                                                              color: Colors.grey,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(width: 12),
-                                                        ],
-                                                      ),
-                                                    if (record.lastOutTime != null)
-                                                      Row(
-                                                        children: [
-                                                          const Icon(
-                                                            Icons.logout,
-                                                            size: 14,
-                                                            color: Colors.red,
-                                                          ),
-                                                          const SizedBox(width: 4),
-                                                          Text(
-                                                            record.lastOutTime!,
-                                                            style: const TextStyle(
-                                                              fontSize: 12,
-                                                              color: Colors.grey,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                  ],
-                                                ),
-                                              if (record.hoursWorked != null && record.hoursWorked!.isNotEmpty)
-                                                Padding(
-                                                  padding: const EdgeInsets.only(top: 4),
-                                                  child: Text(
-                                                    'Hours: ${record.hoursWorked!}',
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.blue,
-                                                      fontWeight: FontWeight.w500,
-                                                    ),
-                                                  ),
-                                                ),
-                                              if (logs.isNotEmpty)
-                                                Padding(
-                                                  padding: const EdgeInsets.only(top: 4),
-                                                  child: Text(
-                                                    '${logs.length} log${logs.length != 1 ? 's' : ''}',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      color: Colors.grey.shade600,
-                                                      fontStyle: FontStyle.italic,
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                        Icon(
-                                          isExpanded
-                                              ? Icons.expand_less
-                                              : Icons.expand_more,
-                                          color: const Color(0xFF666666),
-                                          size: 24,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-
-                                // Attendance logs (expanded)
-                                if (isExpanded && logs.isNotEmpty)
-                                  Container(
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Detailed Logs:',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF666666),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        ...logs.map((log) {
-                                          return Container(
-                                            margin: const EdgeInsets.only(bottom: 8),
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFF8F9FA),
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(
-                                                color: Colors.grey.withOpacity(0.2),
-                                              ),
-                                            ),
-                                            child: Row(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Container(
-                                                  width: 30,
-                                                  height: 30,
-                                                  decoration: BoxDecoration(
-                                                    color: log.action == 'IN'
-                                                        ? Colors.green.shade50
-                                                        : Colors.red.shade50,
-                                                    shape: BoxShape.circle,
-                                                    border: Border.all(
-                                                      color: log.action == 'IN'
-                                                          ? Colors.green.shade200
-                                                          : Colors.red.shade200,
-                                                      width: 1.5,
-                                                    ),
-                                                  ),
-                                                  child: Center(
-                                                    child: Text(
-                                                      log.action.substring(0, 1),
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        fontWeight: FontWeight.bold,
-                                                        color: log.action == 'IN'
-                                                            ? Colors.green
-                                                            : Colors.red,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Row(
-                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                        children: [
-                                                          Text(
-                                                            log.action,
-                                                            style: TextStyle(
-                                                              fontSize: 14,
-                                                              fontWeight: FontWeight.w600,
-                                                              color: log.action == 'IN'
-                                                                  ? Colors.green
-                                                                  : Colors.red,
-                                                            ),
-                                                          ),
-                                                          Text(
-                                                            log.time,
-                                                            style: const TextStyle(
-                                                              fontSize: 14,
-                                                              fontWeight: FontWeight.w600,
-                                                              color: Color(0xFF333333),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      if (log.notes != null && log.notes!.isNotEmpty)
-                                                        Padding(
-                                                          padding: const EdgeInsets.only(top: 4),
-                                                          child: Text(
-                                                            log.notes!,
-                                                            style: const TextStyle(
-                                                              fontSize: 12,
-                                                              color: Colors.grey,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        DateFormat('MMM dd, yyyy hh:mm a')
-                                                            .format(log.timestamp),
-                                                        style: const TextStyle(
-                                                          fontSize: 10,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList(),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem(String value, String label, IconData icon, Color color) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
+        // Results Summary
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Colors.white,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${filteredStaffIds.length} staff found',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  Text(
+                    '${data.dailyAttendance.length} daily records • ${data.attendanceLog.length} log records',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+              if (_startDate != null && _endDate != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4F46E5).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${DateFormat('dd/MM').format(_startDate!)} - ${DateFormat('dd/MM/yyyy').format(_endDate!)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF4F46E5),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: color.withOpacity(0.8),
+
+        // Staff List
+        Expanded(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (ScrollNotification scrollInfo) {
+              if (scrollInfo.metrics.pixels == scrollInfo.metrics.maxScrollExtent &&
+                  !_isLoadingMore &&
+                  (_hasMoreDaily || _hasMoreLog)) {
+                _loadMoreData();
+                return true;
+              }
+              return false;
+            },
+            child: RefreshIndicator(
+              onRefresh: () async {
+                _onRefresh();
+              },
+              color: const Color(0xFF4F46E5),
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  ...filteredStaffIds.map((staffId) {
+                    final staffRecords = staffAttendance[staffId]!;
+                    final firstRecord = staffRecords.first;
+                    final dateLogs = staffDateLogs[staffId] ?? {};
+                    final isStaffExpanded = _expandedStaff[staffId] ?? false;
+
+                    return _buildStaffCard(
+                      staffId: staffId,
+                      name: firstRecord.name,
+                      shiftStart: firstRecord.shiftStart,
+                      shiftEnd: firstRecord.shiftEnd,
+                      totalDays: staffRecords.length,
+                      records: staffRecords,
+                      dateLogs: dateLogs,
+                      isStaffExpanded: isStaffExpanded,
+                    );
+                  }).toList(),
+
+                  // Loading More Indicator
+                  if (_isLoadingMore)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: const Center(
+                        child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
+                      ),
+                    ),
+
+                  // No More Data Message
+                  if (!_hasMoreDaily && !_hasMoreLog && filteredStaffIds.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: const Center(
+                        child: Text(
+                          'No more records to load',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'present':
-        return Colors.green;
-      case 'late':
-        return Colors.orange;
-      case 'absent':
-        return Colors.red;
-      case 'early':
-        return Colors.blue;
-      case 'half day':
-        return Colors.purple;
-      default:
-        return Colors.grey;
+  Widget _buildStaffCard({
+    required String staffId,
+    required String name,
+    required String? shiftStart,
+    required String? shiftEnd,
+    required int totalDays,
+    required List<AttendanceRecord> records,
+    required Map<String, List<AttendanceLog>> dateLogs,
+    required bool isStaffExpanded,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Level 1: Staff Header (Always visible)
+          InkWell(
+            onTap: () {
+              setState(() {
+                _expandedStaff[staffId] = !isStaffExpanded;
+              });
+            },
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  // Avatar
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF4F46E5).withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        name.substring(0, 1).toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+
+                  // Staff Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'ID: $staffId',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (shiftStart != null && shiftEnd != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Shift: ${_formatTime(shiftStart)} - ${_formatTime(shiftEnd)}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Days Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF4F46E5).withOpacity(0.1),
+                          const Color(0xFF7C3AED).withOpacity(0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$totalDays days',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF4F46E5),
+                      ),
+                    ),
+                  ),
+
+                  // Expand Icon
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isStaffExpanded
+                          ? const Color(0xFF4F46E5).withOpacity(0.1)
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isStaffExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                      color: isStaffExpanded ? const Color(0xFF4F46E5) : const Color(0xFF64748B),
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Level 2: Dates List (Expanded when THIS staff is expanded)
+          if (isStaffExpanded) ...[
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: records.map((record) {
+                  final dateLogsForDate = dateLogs[record.date] ?? [];
+                  final isDateExpanded = _expandedDates[staffId]?[record.date] ?? false;
+
+                  return _buildDateCard(
+                    staffId: staffId,
+                    record: record,
+                    logs: dateLogsForDate,
+                    isDateExpanded: isDateExpanded,
+                    onTap: () {
+                      setState(() {
+                        // Initialize the map for this staff if needed
+                        if (!_expandedDates.containsKey(staffId)) {
+                          _expandedDates[staffId] = {};
+                        }
+                        _expandedDates[staffId]![record.date] = !isDateExpanded;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateCard({
+    required String staffId,
+    required AttendanceRecord record,
+    required List<AttendanceLog> logs,
+    required bool isDateExpanded,
+    required VoidCallback onTap,
+  }) {
+    final statusColor = _getStatusColor(record.status);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDateExpanded ? statusColor.withOpacity(0.3) : const Color(0xFFF1F5F9),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Level 2: Date Header
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  // Date Box
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: statusColor.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _getDayOfWeek(record.date),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _getDayNumber(record.date),
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: statusColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+
+                  // Date Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: statusColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                record.status.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _formatDate(record.date),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Time Chips (IN and OUT separately)
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            if (record.firstInTime != null)
+                              _buildModernTimeChip(
+                                icon: Icons.login_rounded,
+                                time: _formatTime(record.firstInTime!),
+                                color: const Color(0xFF10B981),
+                              ),
+                            if (record.lastOutTime != null)
+                              _buildModernTimeChip(
+                                icon: Icons.logout_rounded,
+                                time: _formatTime(record.lastOutTime!),
+                                color: const Color(0xFFEF4444),
+                              ),
+                            if (record.hoursWorked != null && record.hoursWorked!.isNotEmpty)
+                              _buildModernTimeChip(
+                                icon: Icons.schedule_rounded,
+                                time: record.hoursWorked!,
+                                color: const Color(0xFF3B82F6),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Logs Count & Expand Icon
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${logs.length}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                      const Text(
+                        'logs',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isDateExpanded
+                          ? statusColor.withOpacity(0.15)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isDateExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                      color: isDateExpanded ? statusColor : const Color(0xFF94A3B8),
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Level 3: Attendance Logs (Expanded when date is expanded)
+          if (isDateExpanded) ...[
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Logs Header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4F46E5).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.history_rounded, size: 16, color: Color(0xFF4F46E5)),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Activity Logs',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4F46E5).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${logs.length}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF4F46E5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Logs List
+                  if (logs.isEmpty)
+                    _buildNoLogsMessage()
+                  else
+                    ...logs.map((log) => _buildModernLogItem(log)).toList(),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernTimeChip({
+    required IconData icon,
+    required String time,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          Text(
+            time,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernLogItem(AttendanceLog log) {
+    final isIn = log.action == 'IN';
+    final actionColor = isIn ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final time = DateFormat('hh:mm a').format(log.timestamp);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
+      ),
+      child: Row(
+        children: [
+          // Log Icon
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: actionColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(
+                isIn ? Icons.login_rounded : Icons.logout_rounded,
+                size: 20,
+                color: actionColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+
+          // Log Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: actionColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        log.action,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: actionColor,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      time,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today_rounded, size: 11, color: Color(0xFF94A3B8)),
+                    const SizedBox(width: 5),
+                    Text(
+                      DateFormat('MMM dd, yyyy').format(log.timestamp),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                if (log.notes != null && log.notes!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFF1F5F9)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.notes_rounded, size: 12, color: Color(0xFF94A3B8)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            log.notes!,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF475569),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoLogsMessage() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.info_outline_rounded, size: 28, color: Color(0xFF94A3B8)),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'No activity logs',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper methods
+  String _formatTime(String timeStr) {
+    try {
+      if (timeStr.length >= 5) return timeStr.substring(0, 5);
+      return timeStr;
+    } catch (e) {
+      return timeStr;
     }
+  }
+
+  String _getDayOfWeek(String date) {
+    try {
+      final dateTime = DateTime.parse(date);
+      return DateFormat('EEE').format(dateTime).toUpperCase();
+    } catch (e) {
+      return '---';
+    }
+  }
+
+  String _getDayNumber(String date) {
+    try {
+      final dateTime = DateTime.parse(date);
+      return dateTime.day.toString();
+    } catch (e) {
+      return '--';
+    }
+  }
+
+  String _formatDate(String date) {
+    try {
+      final dateTime = DateTime.parse(date);
+      return DateFormat('MMMM dd, yyyy').format(dateTime);
+    } catch (e) {
+      return date;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    final statusLower = status.toLowerCase();
+    return switch (statusLower) {
+      'present' => const Color(0xFF10B981),
+      'late' => const Color(0xFFF59E0B),
+      'absent' => const Color(0xFFEF4444),
+      'early' => const Color(0xFF3B82F6),
+      'half day' => const Color(0xFF8B5CF6),
+      _ => Colors.grey,
+    };
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(color: Color(0xFF4F46E5)),
+          const SizedBox(height: 16),
+          Text(
+            'Loading attendance data...',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.error_outline, size: 40, color: Color(0xFFEF4444)),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Oops! Something went wrong',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _onRefresh,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4F46E5),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Try Again', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: const Icon(Icons.history, size: 60, color: Color(0xFF94A3B8)),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'No Records Found',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Try adjusting your search or filters',
+            style: TextStyle(
+              fontSize: 14,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          if (_searchQuery.isNotEmpty || _startDate != null || _endDate != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: ElevatedButton(
+                onPressed: _clearFilters,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F46E5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Clear Filters'),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }

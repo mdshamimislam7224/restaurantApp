@@ -13,13 +13,10 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
   List<Map<String, dynamic>> allCostingRecords = [];
   List<Map<String, dynamic>> filteredCostingRecords = [];
   String _selectedFilterType = "All";
-  String? _selectedDateFilter;
   DateTime? _selectedDate;
-
-  // Add date range filter variables
   DateTime? _startDate;
   DateTime? _endDate;
-  String _dateFilterType = "single"; // "single", "range", or "all"
+  String _dateFilterType = "all"; // Changed default to "all"
 
   @override
   void initState() {
@@ -39,7 +36,7 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
   void _filterCostingRecords() {
     setState(() {
       // First filter by type
-      List<Map<String, dynamic>> tempRecords = allCostingRecords;
+      List<Map<String, dynamic>> tempRecords = List.from(allCostingRecords);
 
       if (_selectedFilterType != "All") {
         tempRecords = tempRecords
@@ -49,16 +46,32 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
 
       // Then filter by date
       if (_dateFilterType == "single" && _selectedDate != null) {
-        String dateString = _selectedDate!.toIso8601String().split("T").first;
+        String dateString = DateFormat('yyyy-MM-dd').format(_selectedDate!);
         tempRecords = tempRecords
-            .where((record) => record['date'] == dateString)
+            .where((record) {
+          try {
+            String recordDate = record['date']?.toString() ?? '';
+            // Handle different date formats
+            if (recordDate.contains(' ')) {
+              recordDate = recordDate.split(' ')[0];
+            }
+            return recordDate == dateString;
+          } catch (e) {
+            return false;
+          }
+        })
             .toList();
       } else if (_dateFilterType == "range" && _startDate != null && _endDate != null) {
         tempRecords = tempRecords.where((record) {
           try {
-            DateTime recordDate = DateTime.parse(record['date']);
-            return recordDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
-                recordDate.isBefore(_endDate!.add(const Duration(days: 1)));
+            String dateStr = record['date']?.toString() ?? '';
+            if (dateStr.contains(' ')) {
+              dateStr = dateStr.split(' ')[0];
+            }
+            DateTime recordDate = DateTime.parse(dateStr);
+            // Check if recordDate is between startDate and endDate (inclusive)
+            return (recordDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+                recordDate.isBefore(_endDate!.add(const Duration(days: 1))));
           } catch (e) {
             return false;
           }
@@ -75,152 +88,150 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
     loadCostingRecords();
   }
 
-  // Add this function to show date filter dialog
   void _showDateFilterDialog() {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text("Filter by Date"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text("All Dates"),
-                  leading: Radio<String>(
-                    value: "all",
-                    groupValue: _dateFilterType,
-                    onChanged: (value) {
-                      setState(() {
-                        _dateFilterType = value!;
-                        _selectedDate = null;
-                        _startDate = null;
-                        _endDate = null;
-                      });
-                      Navigator.pop(context);
-                      _filterCostingRecords();
-                    },
-                  ),
-                ),
-                ListTile(
-                  title: const Text("Single Date"),
-                  leading: Radio<String>(
-                    value: "single",
-                    groupValue: _dateFilterType,
-                    onChanged: (value) {
-                      setState(() {
-                        _dateFilterType = value!;
-                      });
-                    },
-                  ),
-                  trailing: _dateFilterType == "single"
-                      ? TextButton(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDate ?? DateTime.now(),
-                        firstDate: DateTime(2023),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _selectedDate = picked;
-                        });
-                      }
-                    },
-                    child: Text(
-                      _selectedDate != null
-                          ? DateFormat('dd/MM/yyyy').format(_selectedDate!)
-                          : "Select Date",
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text("Filter by Date"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      title: const Text("All Dates"),
+                      leading: Radio<String>(
+                        value: "all",
+                        groupValue: _dateFilterType,
+                        onChanged: (value) {
+                          setState(() {
+                            _dateFilterType = value!;
+                          });
+                        },
+                      ),
                     ),
-                  )
-                      : null,
-                ),
-                ListTile(
-                  title: const Text("Date Range"),
-                  leading: Radio<String>(
-                    value: "range",
-                    groupValue: _dateFilterType,
-                    onChanged: (value) {
-                      setState(() {
-                        _dateFilterType = value!;
-                      });
-                    },
-                  ),
-                  subtitle: _dateFilterType == "range"
-                      ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextButton(
+                    ListTile(
+                      title: const Text("Single Date"),
+                      leading: Radio<String>(
+                        value: "single",
+                        groupValue: _dateFilterType,
+                        onChanged: (value) {
+                          setState(() {
+                            _dateFilterType = value!;
+                          });
+                        },
+                      ),
+                      trailing: _dateFilterType == "single"
+                          ? TextButton(
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: context,
-                            initialDate: _startDate ?? DateTime.now(),
+                            initialDate: _selectedDate ?? DateTime.now(),
                             firstDate: DateTime(2023),
                             lastDate: DateTime(2100),
                           );
                           if (picked != null) {
                             setState(() {
-                              _startDate = picked;
+                              _selectedDate = picked;
                             });
                           }
                         },
                         child: Text(
-                          _startDate != null
-                              ? "From: ${DateFormat('dd/MM/yyyy').format(_startDate!)}"
-                              : "Select Start Date",
+                          _selectedDate != null
+                              ? DateFormat('dd/MM/yyyy').format(_selectedDate!)
+                              : "Select Date",
                         ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _endDate ?? DateTime.now(),
-                            firstDate: _startDate ?? DateTime(2023),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null) {
-                            setState(() {
-                              _endDate = picked;
-                            });
-                          }
+                      )
+                          : null,
+                    ),
+                    ListTile(
+                      title: const Text("Date Range"),
+                      leading: Radio<String>(
+                        value: "range",
+                        groupValue: _dateFilterType,
+                        onChanged: (value) {
+                          setState(() {
+                            _dateFilterType = value!;
+                          });
                         },
-                        child: Text(
-                          _endDate != null
-                              ? "To: ${DateFormat('dd/MM/yyyy').format(_endDate!)}"
-                              : "Select End Date",
-                        ),
                       ),
-                    ],
-                  )
-                      : null,
+                      subtitle: _dateFilterType == "range"
+                          ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _startDate ?? DateTime.now(),
+                                firstDate: DateTime(2023),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _startDate = picked;
+                                });
+                              }
+                            },
+                            child: Text(
+                              _startDate != null
+                                  ? "From: ${DateFormat('dd/MM/yyyy').format(_startDate!)}"
+                                  : "Select Start Date",
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _endDate ?? DateTime.now(),
+                                firstDate: _startDate ?? DateTime(2023),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _endDate = picked;
+                                });
+                              }
+                            },
+                            child: Text(
+                              _endDate != null
+                                  ? "To: ${DateFormat('dd/MM/yyyy').format(_endDate!)}"
+                                  : "Select End Date",
+                            ),
+                          ),
+                        ],
+                      )
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _dateFilterType = "all";
+                      _selectedDate = null;
+                      _startDate = null;
+                      _endDate = null;
+                    });
+                    _filterCostingRecords();
+                  },
+                  child: const Text("Clear"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _filterCostingRecords();
+                  },
+                  child: const Text("Apply"),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _dateFilterType = "all";
-                  _selectedDate = null;
-                  _startDate = null;
-                  _endDate = null;
-                });
-                Navigator.pop(context);
-                _filterCostingRecords();
-              },
-              child: const Text("Clear"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _filterCostingRecords();
-              },
-              child: const Text("Apply"),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -358,6 +369,29 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                           ),
                         ),
                       ),
+                      // Clear filters button if any filter is active
+                      if (_dateFilterType != "all" || _selectedFilterType != "All")
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _dateFilterType = "all";
+                                _selectedFilterType = "All";
+                                _selectedDate = null;
+                                _startDate = null;
+                                _endDate = null;
+                              });
+                              _filterCostingRecords();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade50,
+                              foregroundColor: Colors.red.shade800,
+                              minimumSize: const Size(double.infinity, 40),
+                            ),
+                            child: const Text("Clear All Filters"),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -415,9 +449,12 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                 final newStatus = isPaid ? 'Pending' : 'Paid';
 
                 // Format date for display
-                String displayDate = record['date'];
+                String displayDate = record['date']?.toString() ?? '';
                 try {
-                  DateTime date = DateTime.parse(record['date']);
+                  if (displayDate.contains(' ')) {
+                    displayDate = displayDate.split(' ')[0];
+                  }
+                  DateTime date = DateTime.parse(displayDate);
                   displayDate = DateFormat('dd/MM/yyyy').format(date);
                 } catch (e) {
                   // Keep original format if parsing fails
@@ -554,38 +591,249 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
   void _showAddCostDialog() {
     final TextEditingController descriptionController = TextEditingController();
     final TextEditingController amountController = TextEditingController();
+    final TextEditingController dateController = TextEditingController();
 
     String selectedType = "Ingredients";
     String selectedStatus = "Pending";
 
     // Initialize with current date
-    String selectedDate = DateTime.now().toIso8601String().split("T").first;
-
-    // Local variable for ID generation
-    String? idDate;
+    DateTime initialDate = DateTime.now();
+    String selectedDate = DateFormat('yyyy-MM-dd').format(initialDate);
+    dateController.text = DateFormat('dd/MM/yyyy').format(initialDate);
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return WillPopScope(
-          onWillPop: () async => false,
-          child: Dialog(
-            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return WillPopScope(
+              onWillPop: () async => false,
+              child: Dialog(
+                insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "Add New Costing",
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        DropdownButtonFormField<String>(
+                          value: selectedType,
+                          items: [
+                            "Ingredients",
+                            "Meal Bill",
+                            "Rent",
+                            "Staff Salary",
+                            "Bill",
+                            "Maintenance",
+                            "Others"
+                          ]
+                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                selectedType = val;
+                              });
+                            }
+                          },
+                          decoration: const InputDecoration(
+                            labelText: "Type",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: descriptionController,
+                          decoration: const InputDecoration(
+                            labelText: "Description",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: amountController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: "Amount",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: "Date",
+                            border: const OutlineInputBorder(),
+                            suffixIcon: const Icon(Icons.calendar_today),
+                          ),
+                          controller: dateController,
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: initialDate,
+                              firstDate: DateTime(2023),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                initialDate = picked;
+                                selectedDate = DateFormat('yyyy-MM-dd').format(picked);
+                                dateController.text = DateFormat('dd/MM/yyyy').format(picked);
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          value: selectedStatus,
+                          items: ["Pending", "Paid"]
+                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                selectedStatus = val;
+                              });
+                            }
+                          },
+                          decoration: const InputDecoration(
+                            labelText: "Status",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text("Cancel"),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  final description = descriptionController.text.trim();
+                                  final amount = double.tryParse(amountController.text) ?? 0.0;
+
+                                  // Generate ID
+                                  final now = DateTime.now();
+                                  final timePart = "${now.hour}${now.minute}${now.second}${now.millisecond}";
+                                  final datePart = DateFormat('ddMMMyyyy').format(initialDate);
+                                  final costingID = "${datePart}_$timePart";
+
+                                  if (description.isNotEmpty && amount > 0) {
+                                    await DBHelper.insertCostingRecord(
+                                      id: costingID,
+                                      date: selectedDate,
+                                      type: selectedType,
+                                      description: description,
+                                      amount: amount,
+                                      paymentStatus: selectedStatus,
+                                    );
+                                    Navigator.pop(context);
+                                    loadCostingRecords();
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please enter valid description and amount'),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: const Text("Add"),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void showUpdateDialog(Map<String, dynamic> record) {
+    final TextEditingController descController =
+    TextEditingController(text: record['description']);
+    final TextEditingController amountController =
+    TextEditingController(text: record['amount'].toString());
+    final TextEditingController dateController = TextEditingController();
+
+    String selectedType = record['type'];
+    String selectedStatus = record['paymentStatus'];
+
+    // Parse date from record
+    DateTime initialDate;
+    try {
+      String dateStr = record['date']?.toString() ?? '';
+      if (dateStr.contains(' ')) {
+        dateStr = dateStr.split(' ')[0];
+      }
+      initialDate = DateTime.parse(dateStr);
+    } catch (e) {
+      initialDate = DateTime.now();
+    }
+
+    String selectedDate = DateFormat('yyyy-MM-dd').format(initialDate);
+    dateController.text = DateFormat('dd/MM/yyyy').format(initialDate);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text("Update Costing Record"),
+              content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      "Add New Costing",
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    // Date Picker Field
+                    TextFormField(
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: "Date",
+                        border: const OutlineInputBorder(),
+                        suffixIcon: const Icon(Icons.calendar_today),
+                        contentPadding: const EdgeInsets.all(12),
                       ),
+                      controller: dateController,
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: initialDate,
+                          firstDate: DateTime(2023),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            initialDate = picked;
+                            selectedDate = DateFormat('yyyy-MM-dd').format(picked);
+                            dateController.text = DateFormat('dd/MM/yyyy').format(picked);
+                          });
+                        }
+                      },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: selectedType,
                       items: [
@@ -600,22 +848,26 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                           .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                           .toList(),
                       onChanged: (val) {
-                        if (val != null) selectedType = val;
+                        if (val != null) {
+                          setState(() {
+                            selectedType = val;
+                          });
+                        }
                       },
                       decoration: const InputDecoration(
                         labelText: "Type",
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller: descriptionController,
+                      controller: descController,
                       decoration: const InputDecoration(
                         labelText: "Description",
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: amountController,
                       keyboardType: TextInputType.number,
@@ -624,228 +876,67 @@ class _CostingRecordScreenState extends State<CostingRecordScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      readOnly: true,
-                      decoration: InputDecoration(
-                        labelText: "Date",
-                        border: const OutlineInputBorder(),
-                        suffixIcon: const Icon(Icons.calendar_today),
-                      ),
-                      controller: TextEditingController(text: selectedDate),
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime(2023),
-                          lastDate: DateTime(2100),
-                        );
-                        if (picked != null) {
-                          selectedDate = picked.toIso8601String().split("T").first;
-                          idDate = DateFormat('ddMMMyyyy').format(picked);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: selectedStatus,
-                      items: ["Pending", "Paid"]
+                      items: ['Pending', 'Paid']
                           .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                           .toList(),
                       onChanged: (val) {
-                        if (val != null) selectedStatus = val;
+                        if (val != null) {
+                          setState(() {
+                            selectedStatus = val;
+                          });
+                        }
                       },
                       decoration: const InputDecoration(
                         labelText: "Status",
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text("Cancel"),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final description = descriptionController.text.trim();
-                              final amount = double.tryParse(amountController.text) ?? 0.0;
-
-                              // Generate ID from selected date or current date
-                              final DateTime dateForId = idDate != null
-                                  ? DateFormat('ddMMMyyyy').parse(idDate!)
-                                  : DateTime.now();
-                              final costingID = generateSaleIdFromDate(dateForId.toString());
-
-                              if (description.isNotEmpty && amount > 0) {
-                                await DBHelper.insertCostingRecord(
-                                  id: costingID,
-                                  date: selectedDate,
-                                  type: selectedType,
-                                  description: description,
-                                  amount: amount,
-                                  paymentStatus: selectedStatus,
-                                );
-                                Navigator.pop(context);
-                                loadCostingRecords();
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Please enter valid description and amount'),
-                                  ),
-                                );
-                              }
-                            },
-                            child: const Text("Add"),
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String generateSaleIdFromDate(String date) {
-    final now = DateTime.now();
-    final timePart = "${now.hour}${now.minute}${now.second}${now.millisecond}";
-    return "${date}_$timePart";
-  }
-  void showUpdateDialog(Map<String, dynamic> record) {
-    final TextEditingController descController =
-    TextEditingController(text: record['description']);
-    final TextEditingController amountController =
-    TextEditingController(text: record['amount'].toString());
-    String selectedType = record['type'];
-    String selectedStatus = record['paymentStatus'];
-    String selectedDate = record['date']; // Get date from record
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("Update Costing Record"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Date Picker Field
-                TextFormField(
-                  readOnly: true,
-                  decoration: InputDecoration(
-                    labelText: "Date",
-                    border: const OutlineInputBorder(),
-                    suffixIcon: const Icon(Icons.calendar_today),
-                    contentPadding: const EdgeInsets.all(12),
-                  ),
-                  controller: TextEditingController(text: selectedDate),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.parse(selectedDate),
-                      firstDate: DateTime(2023),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      selectedDate = picked.toIso8601String().split("T").first;
-                      Navigator.of(context).pop();
-                      showUpdateDialog(record);
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Validate inputs
+                    if (descController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Description cannot be empty')),
+                      );
+                      return;
                     }
+
+                    final amount = double.tryParse(amountController.text);
+                    if (amount == null || amount <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please enter a valid amount')),
+                      );
+                      return;
+                    }
+
+                    await DBHelper.updateCostingRecord(
+                        id: record['id'].toString(),
+                        date: selectedDate,
+                        type: selectedType,
+                        description: descController.text,
+                        amount: amount,
+                        paymentStatus: selectedStatus);
+                    Navigator.pop(context);
+                    loadCostingRecords();
                   },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedType,
-                  items: [
-                    "Ingredients",
-                    "Meal Bill",
-                    "Rent",
-                    "Staff Salary",
-                    "Bill",
-                    "Maintenance",
-                    "Others"
-                  ]
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) selectedType = val;
-                  },
-                  decoration: const InputDecoration(
-                    labelText: "Type",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descController,
-                  decoration: const InputDecoration(
-                    labelText: "Description",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: "Amount",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedStatus,
-                  items: ['Pending', 'Paid']
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) selectedStatus = val;
-                  },
-                  decoration: const InputDecoration(
-                    labelText: "Status",
-                    border: OutlineInputBorder(),
-                  ),
+                  child: const Text("Update"),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                await DBHelper.updateCostingRecord(
-                    id: record['id'].toString(),
-                    date: selectedDate, // Use updated date
-                    type: selectedType,
-                    description: descController.text,
-                    amount: double.parse(amountController.text),
-                    paymentStatus: selectedStatus);
-                Navigator.pop(context);
-                loadCostingRecords();
-              },
-              child: const Text("Update"),
-            ),
-          ],
+            );
+          },
         );
       },
     );
   }
-// Keep your existing _showAddCostDialog and generateSaleIdFromDate methods here
-// ... (they remain the same as in your original code)
 }

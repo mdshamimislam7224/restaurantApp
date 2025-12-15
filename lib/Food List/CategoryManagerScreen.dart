@@ -26,13 +26,11 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
     super.initState();
     _loadData();
   }
-
   Future<void> _loadData() async {
     setState(() => _loading = true);
     await fetchCategories();
     setState(() => _loading = false);
   }
-
   Future<void> fetchCategories() async {
     try {
       final res = await http.get(Uri.parse("$scriptUrl?action=getCategories"));
