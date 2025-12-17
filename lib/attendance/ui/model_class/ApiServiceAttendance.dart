@@ -6,7 +6,7 @@ import 'AttendanceRecord.dart';
 
 class ApiServiceAttendance {
   // Your web app URL
-  static const String _baseUrl = 'https://script.google.com/macros/s/AKfycbwflwfYh9f9ihAZMlTjL5uRA-FrX-Vu7aiKeR1Brx0fwlU6d697ZzCKJes1qDGIIw0EYA/exec';
+  static const String _baseUrl = 'https://script.google.com/macros/s/AKfycby6deNJPk0f4AEg0-jz6lCJfZL7B8A3EdYTDNuiiCwJNRA-1PFLk2meKH4MHyWSs1Yptw/exec';
 
   // ============================================================================
   // ✅ FIXED: POST REQUEST WITH MANUAL REDIRECT HANDLING

@@ -25,8 +25,8 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
   // Pagination variables
   int _dailyCurrentPage = 1;
   int _logCurrentPage = 1;
-  final int _dailyLimit =2;
-  final int _logLimit = 2;
+  final int _dailyLimit =30;
+  final int _logLimit = 100;
   bool _hasMoreDaily = true;
   bool _hasMoreLog = true;
   bool _isLoadingMore = false;
@@ -191,75 +191,69 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Attendance Hierarchy',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-            color: Color(0xFF1E293B),
-          ),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF1E293B), size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(_showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
-                color: _showFilters ? const Color(0xFF4F46E5) : const Color(0xFF1E293B)),
-            onPressed: () {
-              setState(() {
-                _showFilters = !_showFilters;
-              });
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF4F46E5)),
-            onPressed: _onRefresh,
-          ),
-        ],
-      ),
       body: Column(
         children: [
           // Search Bar
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.toLowerCase();
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search by staff name or ID...',
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF64748B)),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                  icon: const Icon(Icons.clear, color: Color(0xFF64748B)),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                // TextField with flexible width
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search by name or ID...',
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF64748B)),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                        icon: const Icon(Icons.clear, color: Color(0xFF64748B)),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                          : null,
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Filter button
+                IconButton(
+                  icon: Icon(
+                    _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+                    color: _showFilters ? const Color(0xFF4F46E5) : const Color(0xFF1E293B),
+                  ),
                   onPressed: () {
-                    _searchController.clear();
                     setState(() {
-                      _searchQuery = '';
+                      _showFilters = !_showFilters;
                     });
                   },
-                )
-                    : null,
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              ),
+
+                // Refresh button
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Color(0xFF4F46E5)),
+                  onPressed: _onRefresh,
+                ),
+              ],
             ),
           ),
-
           // Filters Panel
           if (_showFilters)
             Container(
@@ -283,7 +277,6 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
                   Row(
                     children: [
                       Expanded(
@@ -433,18 +426,14 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting && !_isLoadingMore) {
                   return _buildLoadingState();
                 }
-
                 if (snapshot.hasError) {
                   return _buildErrorState(snapshot.error.toString());
                 }
-
                 if (!snapshot.hasData) {
                   return _buildEmptyState();
                 }
-
                 final data = snapshot.data!;
                 _currentResponse = data;
-
                 return _buildHierarchy(data);
               },
             ),
@@ -496,7 +485,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
       children: [
         // Results Summary
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(10),
           color: Colors.white,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -559,7 +548,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
               },
               color: const Color(0xFF4F46E5),
               child: ListView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(12),
                 children: [
                   ...filteredStaffIds.map((staffId) {
                     final staffRecords = staffAttendance[staffId]!;
@@ -622,14 +611,14 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     required bool isStaffExpanded,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.grey[200],
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
+            blurRadius: 5,
             offset: const Offset(0, 4),
           ),
         ],
@@ -644,17 +633,17 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
               });
             },
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
+              topLeft: Radius.circular(10),
+              topRight: Radius.circular(10),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(15),
               child: Row(
                 children: [
                   // Avatar
                   Container(
-                    width: 56,
-                    height: 56,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
@@ -674,15 +663,14 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                       child: Text(
                         name.substring(0, 1).toUpperCase(),
                         style: const TextStyle(
-                          fontSize: 24,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-
+                  const SizedBox(width: 10),
                   // Staff Info
                   Expanded(
                     child: Column(
@@ -691,7 +679,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                         Text(
                           name,
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF1E293B),
                           ),
@@ -700,7 +688,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                         Text(
                           'ID: $staffId',
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: Color(0xFF64748B),
                             fontWeight: FontWeight.w500,
                           ),
@@ -711,7 +699,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                             child: Text(
                               'Shift: ${_formatTime(shiftStart)} - ${_formatTime(shiftEnd)}',
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 10,
                                 color: Color(0xFF64748B),
                               ),
                             ),
@@ -735,7 +723,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     child: Text(
                       '$totalDays days',
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF4F46E5),
                       ),
@@ -745,8 +733,8 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                   // Expand Icon
                   const SizedBox(width: 12),
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       color: isStaffExpanded
                           ? const Color(0xFF4F46E5).withOpacity(0.1)
@@ -756,7 +744,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     child: Icon(
                       isStaffExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
                       color: isStaffExpanded ? const Color(0xFF4F46E5) : const Color(0xFF64748B),
-                      size: 20,
+                      size: 24,
                     ),
                   ),
                 ],
@@ -766,9 +754,9 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
 
           // Level 2: Dates List (Expanded when THIS staff is expanded)
           if (isStaffExpanded) ...[
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+             Divider(height: 1, color: Color(0xFF4F46E5)),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 children: records.map((record) {
                   final dateLogsForDate = dateLogs[record.date] ?? [];
@@ -808,13 +796,13 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     final statusColor = _getStatusColor(record.status);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAFAFA),
-        borderRadius: BorderRadius.circular(16),
+        color: statusColor.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDateExpanded ? statusColor.withOpacity(0.3) : const Color(0xFFF1F5F9),
-          width: 1.5,
+          width: 1,
         ),
       ),
       child: Column(
@@ -822,18 +810,18 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
           // Level 2: Date Header
           InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(10),
               child: Row(
                 children: [
                   // Date Box
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(5),
                       border: Border.all(
                         color: statusColor.withOpacity(0.2),
                         width: 1,
@@ -845,7 +833,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                         Text(
                           _getDayOfWeek(record.date),
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             color: statusColor,
                             fontWeight: FontWeight.w600,
                           ),
@@ -854,7 +842,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                         Text(
                           _getDayNumber(record.date),
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 14,
                             color: statusColor,
                             fontWeight: FontWeight.w700,
                           ),
@@ -863,7 +851,6 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     ),
                   ),
                   const SizedBox(width: 14),
-
                   // Date Info
                   Expanded(
                     child: Column(
@@ -880,25 +867,25 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                               child: Text(
                                 record.status.toUpperCase(),
                                 style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
                                   color: statusColor,
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatDate(record.date),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _formatDate(record.date),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
 
+                        const SizedBox(height: 6),
                         // Time Chips (IN and OUT separately)
                         Wrap(
                           spacing: 6,
@@ -972,7 +959,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
 
           // Level 3: Attendance Logs (Expanded when date is expanded)
           if (isDateExpanded) ...[
-            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+            const Divider(height: 1, color: Color(0xFF4F46E5)),
             Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -993,7 +980,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                       const Text(
                         'Activity Logs',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF1E293B),
                         ),
@@ -1068,7 +1055,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1078,8 +1065,8 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
         children: [
           // Log Icon
           Container(
-            width: 44,
-            height: 44,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               color: actionColor.withOpacity(0.1),
               shape: BoxShape.circle,
@@ -1087,7 +1074,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
             child: Center(
               child: Icon(
                 isIn ? Icons.login_rounded : Icons.logout_rounded,
-                size: 20,
+                size: 15,
                 color: actionColor,
               ),
             ),
@@ -1112,7 +1099,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                         log.action,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                           color: actionColor,
                         ),
                       ),
@@ -1120,7 +1107,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     Text(
                       time,
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF1E293B),
                       ),
@@ -1135,7 +1122,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     Text(
                       DateFormat('MMM dd, yyyy').format(log.timestamp),
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 12,
                         color: Color(0xFF64748B),
                         fontWeight: FontWeight.w500,
                       ),
@@ -1187,10 +1174,12 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
         border: Border.all(color: const Color(0xFFF1F5F9)),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 60,
-            height: 60,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(16),
