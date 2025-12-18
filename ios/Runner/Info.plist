@@ -3,6 +3,15 @@
 <plist version="1.0">
 <dict>
 
+<key>LSApplicationQueriesSchemes</key>
+<array>
+    <string>https</string>
+    <string>http</string>
+    <string>geo</string>
+    <string>comgooglemaps</string>
+    <string>maps</string>
+</array>
+
 <! InterNet Permission>
 <key>NSAppTransportSecurity</key>
 <dict>

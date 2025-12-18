@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:restaurant_inventory/attendance/ui/AllStaffManualAttendanceScreen.dart';
 
 import 'AllStaffAttendanceScreen.dart';
 import 'AttendanceScreen.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     print('Staff ID: ${widget.staffId}');
     _pages = [
+      //SingleStaffAttendanceScreen(staffId: widget.staffId, staffName: widget.staffName),
       AttendanceScreen(
         staffId: widget.staffId,
         staffName: widget.staffName,

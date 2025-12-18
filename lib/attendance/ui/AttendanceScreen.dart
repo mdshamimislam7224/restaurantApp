@@ -2,13 +2,10 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../Location/LocationService.dart';
 import '../../alertDialog/customDialog.dart';
-import 'PunchButton.dart';
 import 'model_class/ApiServiceAttendance.dart';
 import 'model_class/AttendanceRecord.dart';
 import 'FilterScreen.dart';
@@ -36,13 +33,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   // Location
   String? latitude;
   String? longitude;
-
   // UI State
   bool _isLoading = false;
-  bool _isPunching = false;
   bool _isLoadingMore = false;
   String _errorMessage = '';
-
+  int _presentCount = 0;
+  int _absentCount = 0;
+  int _lateCount = 0;
+  int _earlyCount = 0;
   // Attendance Data
   AttendanceResponse? _attendanceResponse;
   final List<AttendanceRecord> _dailyAttendanceList = [];
@@ -51,7 +49,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   // Pagination
   int _currentPage = 1;
-  final int _pageSize = 2;
+  final int _pageSize = 30;
   bool _hasMoreData = true;
   final ScrollController _scrollController = ScrollController();
 
@@ -250,51 +248,115 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       DateTime(today.year, today.month + 1, 0),
     );
   }
-
-  Future<void> _punchAttendance(String action) async {
-    if (latitude == null || longitude == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Location not available")),
-      );
-      return;
-    }
-
-    setState(() {
-      _isPunching = true;
-    });
-
-    try {
-      await _apiService.punchAttendance(
-        staffId: widget.staffId,
-        action: action,
-        latitude: double.parse(latitude!),
-        longitude: double.parse(longitude!),
-        notes: 'Punched from mobile app',
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Successfully ${action.toLowerCase()}ed!'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
-      await _loadAttendanceData();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to punch: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isPunching = false;
-      });
-    }
+  void _calculateStats() {
+    _presentCount = _dailyAttendanceList
+        .where((record) => record.status.toLowerCase() == 'present')
+        .length;
+    _absentCount = _dailyAttendanceList
+        .where((record) => record.status.toLowerCase() == 'absent')
+        .length;
+    _lateCount = _dailyAttendanceList
+        .where((record) => record.status.toLowerCase() == 'late')
+        .length;
+    _earlyCount = _dailyAttendanceList
+        .where((record) => record.status.toLowerCase() == 'early')
+        .length;
   }
+  Widget _buildStatsCards() {
+    final totalCount = _dailyAttendanceList.length; // Use dailyAttendanceList instead.length;
+    final attendanceRate = totalCount > 0
+        ? (_presentCount / totalCount * 100).toStringAsFixed(1)
+        : '0.0';
 
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard('Total', totalCount.toString(), Colors.blue, Icons.calendar_today),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStatCard('Present', _presentCount.toString(), Colors.green, Icons.check_circle),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard('Absent', _absentCount.toString(), Colors.red, Icons.cancel),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStatCard('Late', _lateCount.toString(), Colors.orange, Icons.watch_later),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard('Early', _earlyCount.toString(), Colors.purple, Icons.alarm),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStatCard('Rate', '$attendanceRate%', Colors.teal, Icons.trending_up),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildStatCard(String label, String value, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: color.withOpacity(0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   Future<void> _openFilterScreen() async {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
@@ -728,23 +790,129 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  // Replace your entire build method with this fully scrollable version:
+
   @override
   Widget build(BuildContext context) {
+    _calculateStats(); // Calculate stats before building
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            if (_hasFilters) _buildFilterChips(),
-            _buildPunchButtons(),
-            _buildAttendanceList(),
-          ],
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await _loadAttendanceData();
+          },
+          child: CustomScrollView(
+            slivers: [
+              // Header Section
+              SliverToBoxAdapter(
+                child: _buildHeader(),
+              ),
+
+              // Filter Chips Section
+              if (_hasFilters)
+                SliverToBoxAdapter(
+                  child: _buildFilterChips(),
+                ),
+
+              // Stats Cards Section
+              SliverToBoxAdapter(
+                child: _buildStatsCards(),
+              ),
+
+              // Attendance Header
+              SliverToBoxAdapter(
+                child: _buildAttendanceHeader(),
+              ),
+
+              // Fixed Height Attendance List Container
+              SliverToBoxAdapter(
+                child: Container(
+                  constraints: BoxConstraints(
+                    minHeight: 200, // Minimum height
+                    maxHeight: 400, // Maximum fixed height - adjust this value!
+                  ),
+                  child: _buildAttendanceListContent(),
+                ),
+              ),
+
+              // Loading More Indicator (outside fixed height area)
+              if (_isLoadingMore)
+                SliverToBoxAdapter(
+                  child: _buildLoadingMoreIndicator(),
+                ),
+
+              // No More Records (outside fixed height area)
+              if (!_hasMoreData && _dailyAttendanceList.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _buildNoMoreRecords(),
+                ),
+
+              // Error Message
+              if (_errorMessage.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _buildErrorMessage(),
+                ),
+
+              // Empty State
+              if (_dailyAttendanceList.isEmpty && !_isLoading)
+                SliverToBoxAdapter(
+                  child: _buildEmptyState(),
+                ),
+
+              // Bottom Padding
+              SliverToBoxAdapter(
+                child: SizedBox(height: 20),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+// Updated _buildAttendanceListContent with fixed height scroll
+  Widget _buildAttendanceListContent() {
+    if (_isLoading && _dailyAttendanceList.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage.isNotEmpty) {
+      return Center(child: _buildErrorMessage());
+    }
+
+    if (_dailyAttendanceList.isEmpty && !_isLoading) {
+      return Center(child: _buildEmptyState());
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (scrollNotification) {
+        if (scrollNotification is ScrollEndNotification &&
+            _scrollController.position.extentAfter == 0 &&
+            _hasMoreData &&
+            !_isLoadingMore &&
+            !_isLoading) {
+          _loadMoreAttendance();
+        }
+        return false;
+      },
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: _dailyAttendanceList.length,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: _buildAttendanceRecord(_dailyAttendanceList[index]),
+          );
+        },
+      ),
+    );
+  }
+// Make time info more compact
 
   Widget _buildHeader() {
     return Container(
@@ -931,34 +1099,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  Widget _buildPunchButtons() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          Expanded(
-            child: PunchButton(
-              label: 'Clock In',
-              icon: Icons.login,
-              color: const Color(0xFF4CAF50),
-              isLoading: _isPunching,
-              onPressed: () => _punchAttendance('in'),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: PunchButton(
-              label: 'Clock Out',
-              icon: Icons.logout,
-              color: const Color(0xFFF44336),
-              isLoading: _isPunching,
-              onPressed: () => _punchAttendance('out'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildAttendanceList() {
     return Expanded(
@@ -1031,7 +1171,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Widget _buildAttendanceHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1080,6 +1220,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
+
   Widget _buildLoadingMoreIndicator() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -1099,7 +1240,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       ),
     );
   }
-
   Widget _buildNoMoreRecords() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20),

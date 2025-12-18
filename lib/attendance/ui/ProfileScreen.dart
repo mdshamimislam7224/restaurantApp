@@ -36,8 +36,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final response = await _apiService.getAttendancespecificStaff(
         staffId: widget.staffId,
-        dailyLimit: 5,
-        logLimit: 5,
+        dailyLimit: 30,
+        logLimit: 100,
       );
 
       // Calculate stats
@@ -216,7 +216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 24),
 
-            // Recent Activity
+            // Recent Activity with FIXED HEIGHT ListView
             const Text(
               'Recent Activity',
               style: TextStyle(
@@ -228,88 +228,121 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
 
             if (_recentAttendance != null && _recentAttendance!.isNotEmpty)
-              Column(
-                children: _recentAttendance!.take(3).map((record) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+              Container(
+                height: 300, // Fixed height for the ListView
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: _getStatusColor(record.status).withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            _getStatusIcon(record.status),
-                            color: _getStatusColor(record.status),
-                            size: 20,
-                          ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _recentAttendance!.length,
+                    separatorBuilder: (context, index) => const Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Color(0xFFF0F0F0),
+                      indent: 16,
+                      endIndent: 16,
+                    ),
+                    itemBuilder: (context, index) {
+                      final record = _recentAttendance![index];
+                      return Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                record.date,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(record.status)
+                                    .withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _getStatusIcon(record.status),
+                                color: _getStatusColor(record.status),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    record.date,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    record.status,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: _getStatusColor(record.status),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (record.hoursWorked != null &&
+                                record.hoursWorked!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE3F2FD),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  record.hoursWorked!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF1976D2),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                record.status,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: _getStatusColor(record.status),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
-                        if (record.hoursWorked != null && record.hoursWorked!.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE3F2FD),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              record.hoursWorked!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1976D2),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                      );
+                    },
+                  ),
+                ),
               )
             else
               Container(
+                height: 100,
                 padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
                 child: const Center(
                   child: Text(
                     'No recent activity',
@@ -380,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 alignment: Alignment.bottomCenter,
                 child: Icon(
                   icon,
-                  size: 24,  // Even smaller
+                  size: 24, // Even smaller
                   color: color,
                 ),
               ),
@@ -395,7 +428,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Text(
                       value,
                       style: TextStyle(
-                        fontSize: 18,  // Smaller
+                        fontSize: 18, // Smaller
                         fontWeight: FontWeight.bold,
                         color: color,
                       ),
@@ -412,7 +445,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 10,  // Smaller
+                      fontSize: 10, // Smaller
                       color: Colors.grey,
                     ),
                     textAlign: TextAlign.center,

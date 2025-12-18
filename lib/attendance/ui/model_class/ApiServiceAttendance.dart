@@ -73,13 +73,13 @@ class ApiServiceAttendance {
         print('📄 HTML Preview: ${response.body.substring(0, response.body.length > 300 ? 300 : response.body.length)}');
         throw Exception('Server returned HTML error page');
       }
-
+      print('✅ Response (first 500 chars): ${response.body}...');
       // Step 4: Log successful response
-      if (response.body.length > 500) {
-        print('✅ Response (first 500 chars): ${response.body.substring(0, 500)}...');
-      } else {
-        print('✅ Response: ${response.body}');
-      }
+      // if (response.body.length > 500) {
+      //   print('✅ Response (first 500 chars): ${response.body.substring(0, 500)}...');
+      // } else {
+      //   print('✅ Response: ${response.body}');
+      // }
 
       return response;
 

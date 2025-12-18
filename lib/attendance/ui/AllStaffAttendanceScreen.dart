@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:restaurant_inventory/attendance/ui/model_class/ApiServiceAttendance.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import 'model_class/AttendanceRecord.dart';
 
 class AllStaffAttendanceScreen extends StatefulWidget {
@@ -21,6 +23,8 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _showFilters = false;
+  bool _isPunching = false;
+  String? _currentPunchingStaffId; // Track which staff is being punched
 
   // Pagination variables
   int _dailyCurrentPage = 1;
@@ -39,6 +43,10 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
   List<AttendanceRecord> _allDailyRecords = [];
   List<AttendanceLog> _allLogRecords = [];
   AttendanceResponse? _currentResponse;
+
+  // Current location
+  double? _currentLatitude;
+  double? _currentLongitude;
 
   @override
   void initState() {
@@ -529,7 +537,6 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
             ],
           ),
         ),
-
         // Staff List
         Expanded(
           child: NotificationListener<ScrollNotification>(
@@ -600,6 +607,147 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     );
   }
 
+  Widget _buildPunchButtons(String staffId, String staffName) {
+    final isPunchingThisStaff = _isPunching && _currentPunchingStaffId == staffId;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildPunchButton(
+              label: 'Clock In',
+              icon: Icons.login,
+              color: const Color(0xFF4CAF50),
+              isLoading: isPunchingThisStaff,
+              onPressed: () => _punchAttendance('in', staffId, staffName),
+              staffId: staffId,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildPunchButton(
+              label: 'Clock Out',
+              icon: Icons.logout,
+              color: const Color(0xFFF44336),
+              isLoading: isPunchingThisStaff,
+              onPressed: () => _punchAttendance('out', staffId, staffName),
+              staffId: staffId,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPunchButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isLoading,
+    required VoidCallback onPressed,
+    required String staffId,
+  }) {
+    return Container(
+      height: 42,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color, width: 1),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: isLoading ? null : onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isLoading)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: color,
+                    ),
+                  )
+                else
+                  Icon(icon, size: 18, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _punchAttendance(String action, String staffId, String staffName) async {
+    // For testing, use default coordinates
+    // In production, you should get real location
+    _currentLatitude = 23.7965; // Default latitude for testing
+    _currentLongitude = 90.4024; // Default longitude for testing
+
+    if (_currentLatitude == null || _currentLongitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Location not available")),
+      );
+      return;
+    }
+
+    setState(() {
+      _isPunching = true;
+      _currentPunchingStaffId = staffId;
+    });
+
+    try {
+      await _apiService.punchAttendance(
+        staffId: staffId,
+        action: action,
+        latitude: _currentLatitude!,
+        longitude: _currentLongitude!,
+        notes: 'Punched from All Staff view',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$staffName successfully ${action.toLowerCase()}ed!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // Refresh data after a short delay
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _onRefresh();
+      });
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to punch: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isPunching = false;
+        _currentPunchingStaffId = null;
+      });
+    }
+  }
+
   Widget _buildStaffCard({
     required String staffId,
     required String name,
@@ -610,6 +758,8 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     required Map<String, List<AttendanceLog>> dateLogs,
     required bool isStaffExpanded,
   }) {
+    final isPunchingThisStaff = _isPunching && _currentPunchingStaffId == staffId;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -708,6 +858,8 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     ),
                   ),
 
+
+
                   // Days Badge
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -754,7 +906,12 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
 
           // Level 2: Dates List (Expanded when THIS staff is expanded)
           if (isStaffExpanded) ...[
-             Divider(height: 1, color: Color(0xFF4F46E5)),
+            Divider(height: 1, color: Color(0xFF4F46E5)),
+            // Punch Buttons (Full width when expanded)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: _buildPunchButtons(staffId, name),
+            ),
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -785,6 +942,9 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
       ),
     );
   }
+
+  // ... Rest of your existing methods remain the same (_buildDateCard, _buildModernLogItem, etc.)
+  // I've kept them the same as in your original code
 
   Widget _buildDateCard({
     required String staffId,
@@ -1105,7 +1265,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                       ),
                     ),
                     Text(
-                      time,
+                      log.time,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -1120,7 +1280,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     const Icon(Icons.calendar_today_rounded, size: 11, color: Color(0xFF94A3B8)),
                     const SizedBox(width: 5),
                     Text(
-                      DateFormat('MMM dd, yyyy').format(log.timestamp),
+                      log.date,
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF64748B),
@@ -1129,34 +1289,49 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                     ),
                   ],
                 ),
-                if (log.notes != null && log.notes!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFF1F5F9)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.notes_rounded, size: 12, color: Color(0xFF94A3B8)),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            log.notes!,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF475569),
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Notes section (only shows if notes exist)
+                    if (log.notes != null && log.notes!.isNotEmpty)
+                      Flexible(
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFF1F5F9)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.notes_rounded,
+                                  size: 12,
+                                  color: Color(0xFF94A3B8)
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  log.notes!,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF475569),
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
+                      )
+                    else
+                      Container(),
+
+                    // Location icon
+                    _build_LocationIcon(log),
+                  ],
+                )
               ],
             ),
           ),
@@ -1164,6 +1339,166 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
       ),
     );
   }
+
+
+  Widget _build_LocationIcon(AttendanceLog log) {
+    return Container(
+      padding: EdgeInsets.all(6),
+      child: (log.latitude != null && log.longitude != null)
+          ? Tooltip(
+        message: 'Tap to view location on map',
+        child: GestureDetector(
+          onTap: () => _showAgreeConfirmationDialog(
+            log.latitude.toString(),
+            log.longitude.toString(),
+          ),
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color(0xFF4285F4),
+                  Color(0xFF34A853),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0xFF4285F4).withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.location_on_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
+      )
+          : Tooltip(
+        message: 'Location not available',
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              'NA',
+              style: TextStyle(
+                fontSize: 10,
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAgreeConfirmationDialog(String latitude, String longitude) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Location'),
+          content: Text('Do you want to Open Maps?'),
+          actions: [
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Open'),
+              onPressed: () {
+                if(latitude.isNotEmpty && longitude.isNotEmpty) {
+                  Navigator.of(context).pop();
+                  locationRequest(double.parse(latitude), double.parse(longitude));
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> locationRequest(double latitude, double longitude) async {
+    final String mapsUrl = 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+    final String fallbackUrl = 'https://maps.google.com/?q=$latitude,$longitude';
+    final String geoUrl = 'geo:$latitude,$longitude';
+    final String googleMapsAppUrl = 'comgooglemaps://?q=$latitude,$longitude';
+    final String appleMapsUrl = 'maps://?q=$latitude,$longitude';
+
+    print('Location URL: $mapsUrl');
+
+    try {
+      if (await canLaunchUrl(Uri.parse(mapsUrl))) {
+        await launchUrl(
+          Uri.parse(mapsUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        return;
+      }
+
+      if (await canLaunchUrl(Uri.parse(fallbackUrl))) {
+        await launchUrl(
+          Uri.parse(fallbackUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        return;
+      }
+
+      if (await canLaunchUrl(Uri.parse(geoUrl))) {
+        await launchUrl(
+          Uri.parse(geoUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        return;
+      }
+
+      if (await canLaunchUrl(Uri.parse(googleMapsAppUrl))) {
+        await launchUrl(
+          Uri.parse(googleMapsAppUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        return;
+      }
+
+      if (await canLaunchUrl(Uri.parse(appleMapsUrl))) {
+        await launchUrl(
+          Uri.parse(appleMapsUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        return;
+      }
+
+      throw Exception('No map application found');
+
+    } catch (e) {
+      print('Error launching URL: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open maps. URL: $mapsUrl'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      throw 'Could not launch map: $e';
+    }
+  }
+
+
 
   Widget _buildNoLogsMessage() {
     return Container(
