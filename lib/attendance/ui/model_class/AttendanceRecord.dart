@@ -12,8 +12,12 @@ class AttendanceRecord {
   final String status;
   final String? hoursWorked;
   final String? notes;
+  final String? leave;  // ✅ NEW: Leave field
   final double? lat;
   final double? long;
+  final String? absentReason;  // ✅ NEW: Absent reason
+  final String? absentMarkedBy;  // ✅ NEW: Marked by
+  final String? absentTimestamp;  // ✅ NEW: Timestamp
 
   AttendanceRecord({
     required this.staffId,
@@ -26,8 +30,12 @@ class AttendanceRecord {
     required this.status,
     this.hoursWorked,
     this.notes,
+    this.leave,  // ✅ NEW
     this.lat,
     this.long,
+    this.absentReason,  // ✅ NEW
+    this.absentMarkedBy,  // ✅ NEW
+    this.absentTimestamp,  // ✅ NEW
   });
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
@@ -45,6 +53,7 @@ class AttendanceRecord {
         return dateStr;
       }
     }
+
     // Parse time - convert UTC to local time
     String? parseTime(String? timeStr) {
       if (timeStr == null || timeStr.isEmpty) return null;
@@ -102,15 +111,51 @@ class AttendanceRecord {
       status: json['Status']?.toString() ?? 'Unknown',
       hoursWorked: parseHoursWorked(json['Hours Worked']?.toString()),
       notes: json['Notes']?.toString(),
+      leave: json['Leave']?.toString(),  // ✅ NEW: Parse Leave column
       lat: (json['Lat'] is num) ? (json['Lat'] as num).toDouble() : null,
       long: (json['Long'] is num) ? (json['Long'] as num).toDouble() : null,
+      absentReason: json['Absent Reason']?.toString(),  // ✅ NEW
+      absentMarkedBy: json['ABSENT_MARKED_BY']?.toString(),  // ✅ NEW
+      absentTimestamp: json['ABSENT_TIMESTAMP']?.toString(),  // ✅ NEW
     );
+  }
+
+  // ✅ NEW: Helper method to check if this is a leave record
+  bool get isLeave {
+    final statusLower = status.toLowerCase();
+    final leaveLower = (leave ?? '').toLowerCase();
+
+    return statusLower.contains('leave') ||
+        leaveLower.contains('leave') ||
+        statusLower == 'sick leave' ||
+        statusLower == 'annual leave' ||
+        statusLower == 'casual leave' ||
+        statusLower == 'emergency leave' ||
+        statusLower == 'medical leave' ||
+        statusLower == 'unpaid leave' ||
+        statusLower == 'maternity leave' ||
+        statusLower == 'paternity leave';
+  }
+
+  // ✅ NEW: Get the leave type (if it's a leave record)
+  String? get leaveType {
+    if (!isLeave) return null;
+
+    if (leave != null && leave!.isNotEmpty) {
+      return leave;
+    }
+
+    if (status.toLowerCase().contains('leave')) {
+      return status;
+    }
+
+    return null;
   }
 
   // For debugging
   @override
   String toString() {
-    return 'AttendanceRecord{date: $date, status: $status, in: $firstInTime, out: $lastOutTime, hours: $hoursWorked}';
+    return 'AttendanceRecord{date: $date, status: $status, leave: $leave, in: $firstInTime, out: $lastOutTime, hours: $hoursWorked}';
   }
 }
 
@@ -203,7 +248,6 @@ class AttendanceLog {
   }
 }
 
-// Keep the rest of your classes unchanged...
 class AttendancePagination {
   final int currentPage;
   final int limit;
@@ -277,7 +321,7 @@ class AttendanceResponse {
         for (var item in dailyData) {
           try {
             final record = AttendanceRecord.fromJson(item);
-            print('  ✅ ${record.date}: ${record.firstInTime} - ${record.lastOutTime}');
+            print('  ✅ ${record.date}: ${record.status}${record.isLeave ? " (LEAVE)" : ""} ${record.firstInTime ?? ""} - ${record.lastOutTime ?? ""}');
             dailyAttendance.add(record);
           } catch (e) {
             print('  ❌ Error parsing attendance record: $e');
@@ -327,7 +371,6 @@ class AttendanceResponse {
   }
 }
 
-// PunchResult and StaffInfo remain the same...
 class PunchResult {
   final String staffId;
   final String name;

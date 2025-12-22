@@ -6,7 +6,7 @@ import 'AttendanceRecord.dart';
 
 class ApiServiceAttendance {
   // Your web app URL
-  static const String _baseUrl = 'https://script.google.com/macros/s/AKfycby6deNJPk0f4AEg0-jz6lCJfZL7B8A3EdYTDNuiiCwJNRA-1PFLk2meKH4MHyWSs1Yptw/exec';
+  static const String _baseUrl = 'https://script.google.com/macros/s/AKfycbwuzZICJunBViOOn6VpBQ6rmwl0k6kKWUIhI4UOajNOEoABwbRuY85phZREkfPC1Rze8w/exec';
 
   // ============================================================================
   // ✅ FIXED: POST REQUEST WITH MANUAL REDIRECT HANDLING
@@ -274,5 +274,74 @@ class ApiServiceAttendance {
       rethrow;
     }
   }
+
+  // Mark Leave for an employee
+  Future<Map<String, dynamic>> markLeave({
+    required String staffId,
+    required String startDate,
+    required String endDate,
+    required String leaveType,
+    required String reason,
+    String markedBy = 'System',
+  }) async {
+    try {
+      print('📝 Marking leave for $staffId from $startDate to $endDate');
+
+      // ✅ USE _makePostRequest to handle redirects
+      final response = await _makePostRequest({
+        'endpoint': 'markLeave',
+        'staffId': staffId,
+        'startDate': startDate,
+        'endDate': endDate,
+        'leaveType': leaveType,
+        'reason': reason,
+        'markedBy': markedBy,
+      });
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ Leave marked: ${data['message']}');
+        return data;
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+      }
+    } catch (e) {
+      print('❌ markLeave error: $e');
+      rethrow;
+    }
+  }
+
+  /// Cancel Leave for a specific date
+  Future<Map<String, dynamic>> cancelLeave({
+    required String staffId,
+    required String date,
+    String cancelledBy = 'System',
+  }) async {
+    try {
+      print('🚫 Cancelling leave for $staffId on $date');
+
+      // ✅ USE _makePostRequest to handle redirects
+      final response = await _makePostRequest({
+        'endpoint': 'cancelLeave',
+        'staffId': staffId,
+        'date': date,
+        'cancelledBy': cancelledBy,
+      });
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ Leave cancelled: ${data['message']}');
+        return data;
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+      }
+    } catch (e) {
+      print('❌ cancelLeave error: $e');
+      rethrow;
+    }
+  }
+
+
+
 
 }

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:restaurant_inventory/attendance/ui/model_class/ApiServiceAttendance.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'LeaveDialog.dart';
 import 'model_class/AttendanceRecord.dart';
 
 class AllStaffAttendanceScreen extends StatefulWidget {
@@ -607,35 +608,123 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     );
   }
 
+  // Widget _buildPunchButtons(String staffId, String staffName) {
+  //   final isPunchingThisStaff = _isPunching && _currentPunchingStaffId == staffId;
+  //
+  //   return Container(
+  //     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  //     child: Row(
+  //       children: [
+  //         Expanded(
+  //           child: _buildPunchButton(
+  //             label: 'Clock In',
+  //             icon: Icons.login,
+  //             color: const Color(0xFF4CAF50),
+  //             isLoading: isPunchingThisStaff,
+  //             onPressed: () => _punchAttendance('in', staffId, staffName),
+  //             staffId: staffId,
+  //           ),
+  //         ),
+  //         const SizedBox(width: 12),
+  //         Expanded(
+  //           child: _buildPunchButton(
+  //             label: 'Clock Out',
+  //             icon: Icons.logout,
+  //             color: const Color(0xFFF44336),
+  //             isLoading: isPunchingThisStaff,
+  //             onPressed: () => _punchAttendance('out', staffId, staffName),
+  //             staffId: staffId,
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+
   Widget _buildPunchButtons(String staffId, String staffName) {
     final isPunchingThisStaff = _isPunching && _currentPunchingStaffId == staffId;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _buildPunchButton(
-              label: 'Clock In',
-              icon: Icons.login,
-              color: const Color(0xFF4CAF50),
-              isLoading: isPunchingThisStaff,
-              onPressed: () => _punchAttendance('in', staffId, staffName),
-              staffId: staffId,
-            ),
+          // Clock In/Out Row
+          Row(
+            children: [
+              Expanded(
+                child: _buildPunchButton(
+                  label: 'Clock In',
+                  icon: Icons.login,
+                  color: const Color(0xFF4CAF50),
+                  isLoading: isPunchingThisStaff,
+                  onPressed: () => _punchAttendance('in', staffId, staffName),
+                  staffId: staffId,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildPunchButton(
+                  label: 'Clock Out',
+                  icon: Icons.logout,
+                  color: const Color(0xFFF44336),
+                  isLoading: isPunchingThisStaff,
+                  onPressed: () => _punchAttendance('out', staffId, staffName),
+                  staffId: staffId,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildPunchButton(
-              label: 'Clock Out',
-              icon: Icons.logout,
-              color: const Color(0xFFF44336),
-              isLoading: isPunchingThisStaff,
-              onPressed: () => _punchAttendance('out', staffId, staffName),
-              staffId: staffId,
+          const SizedBox(height: 10),
+          // Leave Button (Full Width)
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                showLeaveDialog(
+                  context,
+                  staffId: staffId,
+                  staffName: staffName,
+                  onLeaveMarked: () {
+                    _onRefresh(); // Refresh the attendance data
+                  },
+                );
+              },
+              icon: const Icon(Icons.event_busy, size: 18),
+              label: const Text(
+                'Mark Leave',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFF59E0B),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                elevation: 0,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+  void showLeaveDialog(
+      BuildContext context, {
+        required String staffId,
+        required String staffName,
+        required Function onLeaveMarked,
+      }) {
+    showDialog(
+      context: context,
+      builder: (context) => LeaveDialog(
+        staffId: staffId,
+        staffName: staffName,
+        onLeaveMarked: onLeaveMarked,
       ),
     );
   }
@@ -946,6 +1035,10 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
   // ... Rest of your existing methods remain the same (_buildDateCard, _buildModernLogItem, etc.)
   // I've kept them the same as in your original code
 
+  // Replace your _buildDateCard method with this updated version
+
+  // Replace your _buildDateCard method with this updated version
+
   Widget _buildDateCard({
     required String staffId,
     required AttendanceRecord record,
@@ -954,6 +1047,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     required VoidCallback onTap,
   }) {
     final statusColor = _getStatusColor(record.status);
+    final isLeave = record.isLeave;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -975,7 +1069,7 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
               padding: const EdgeInsets.all(10),
               child: Row(
                 children: [
-                  // Date Box
+                  // Date Box (Fixed width)
                   Container(
                     width: 40,
                     height: 40,
@@ -1010,116 +1104,161 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  // Date Info
+                  const SizedBox(width: 12),
+
+                  // Main content - Takes available space
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                record.status.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: statusColor,
+                            // Status badge
+                            Flexible(
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 120, // Prevent from growing too wide
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isLeave) ...[
+                                      Icon(
+                                        Icons.event_busy,
+                                        size: 12,
+                                        color: statusColor,
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        record.status.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 11, // Slightly smaller
+                                          fontWeight: FontWeight.w500,
+                                          color: statusColor,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _formatDate(record.date),
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF64748B),
-                                fontWeight: FontWeight.w500,
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                _formatDate(record.date),
+                                style: const TextStyle(
+                                  fontSize: 12, // Slightly smaller
+                                  color: Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
                         ),
 
                         const SizedBox(height: 6),
-                        // Time Chips (IN and OUT separately)
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            if (record.firstInTime != null)
-                              _buildModernTimeChip(
-                                icon: Icons.login_rounded,
-                                time: _formatTime(record.firstInTime!),
-                                color: const Color(0xFF10B981),
-                              ),
-                            if (record.lastOutTime != null)
-                              _buildModernTimeChip(
-                                icon: Icons.logout_rounded,
-                                time: _formatTime(record.lastOutTime!),
-                                color: const Color(0xFFEF4444),
-                              ),
-                            if (record.hoursWorked != null && record.hoursWorked!.isNotEmpty)
-                              _buildModernTimeChip(
-                                icon: Icons.schedule_rounded,
-                                time: record.hoursWorked!,
-                                color: const Color(0xFF3B82F6),
-                              ),
-                          ],
+
+                        // Time Chips - Wrap with flexible constraints
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              if (record.firstInTime != null)
+                                _buildModernTimeChip(
+                                  icon: Icons.login_rounded,
+                                  time: _formatTime(record.firstInTime!),
+                                  color: const Color(0xFF10B981),
+                                ),
+                              if (record.firstInTime != null && record.lastOutTime != null)
+                                const SizedBox(width: 6),
+                              if (record.lastOutTime != null)
+                                _buildModernTimeChip(
+                                  icon: Icons.logout_rounded,
+                                  time: _formatTime(record.lastOutTime!),
+                                  color: const Color(0xFFEF4444),
+                                ),
+                              if (record.hoursWorked != null && record.hoursWorked!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: _buildModernTimeChip(
+                                    icon: Icons.schedule_rounded,
+                                    time: record.hoursWorked!,
+                                    color: const Color(0xFF3B82F6),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  // Logs Count & Expand Icon
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  // Logs count and expand icon - Fixed width
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        '${logs.length}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '${logs.length}',
+                            style: const TextStyle(
+                              fontSize: 11, // Slightly smaller
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          const Text(
+                            'logs',
+                            style: TextStyle(
+                              fontSize: 9, // Slightly smaller
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
                       ),
-                      const Text(
-                        'logs',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF94A3B8),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 28, // Slightly smaller
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: isDateExpanded
+                              ? statusColor.withOpacity(0.15)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          isDateExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                          color: isDateExpanded ? statusColor : const Color(0xFF94A3B8),
+                          size: 18,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: isDateExpanded
-                          ? statusColor.withOpacity(0.15)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      isDateExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                      color: isDateExpanded ? statusColor : const Color(0xFF94A3B8),
-                      size: 20,
-                    ),
                   ),
                 ],
               ),
             ),
           ),
 
-          // Level 3: Attendance Logs (Expanded when date is expanded)
+          // ✅ NEW: Cancel Leave Button
+          if (isLeave && isDateExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              child: _buildCancelLeaveButton(staffId, record.date, record.name),
+            ),
+
+          // Level 3: Attendance Logs
           if (isDateExpanded) ...[
-            const Divider(height: 1, color: Color(0xFF4F46E5)),
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
             Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -1179,6 +1318,357 @@ class _AllStaffAttendanceScreenState extends State<AllStaffAttendanceScreen> {
     );
   }
 
+// ✅ NEW: Cancel Leave Button Widget
+  Widget _buildCancelLeaveButton(String staffId, String date, String staffName) {
+    return Container(
+      width: double.infinity,
+      height: 42,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFEF4444).withOpacity(0.1),
+            const Color(0xFFF97316).withOpacity(0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFFEF4444).withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _showCancelLeaveDialog(staffId, date, staffName),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.cancel_outlined,
+                    size: 16,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Cancel Leave',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+// ✅ NEW: Cancel Leave Dialog
+  void _showCancelLeaveDialog(String staffId, String date, String staffName) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        bool isProcessing = false;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              contentPadding: const EdgeInsets.all(24),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFEF4444), Color(0xFFF97316)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.event_busy,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Title
+                  const Text(
+                    'Cancel Leave?',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Message
+                  Text(
+                    'Are you sure you want to cancel leave for:',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Staff & Date Info
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person, size: 16, color: Color(0xFF64748B)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                staffName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 16, color: Color(0xFF64748B)),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatDate(date),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Warning
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 18, color: Color(0xFFEF4444)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'This will change the status to "Absent"',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFFEF4444),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                // Cancel Button
+                TextButton(
+                  onPressed: isProcessing ? null : () => Navigator.pop(dialogContext),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  child: const Text(
+                    'No, Keep Leave',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+
+                // Confirm Button
+                ElevatedButton(
+                  onPressed: isProcessing
+                      ? null
+                      : () async {
+                    setState(() {
+                      isProcessing = true;
+                    });
+
+                    await _cancelLeave(staffId, date, staffName); // Call your cancelLeave method heren);
+
+                    Navigator.pop(dialogContext);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEF4444),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: isProcessing
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                      : const Text(
+                    'Yes, Cancel Leave',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+// ✅ NEW: Cancel Leave Logic
+  Future<void> _cancelLeave(String staffId, String date, String staffName) async {
+    try {
+      print('🚫 Cancelling leave for $staffId on $date');
+
+      final response = await _apiService.cancelLeave(
+        staffId: staffId,
+        date: date,
+        cancelledBy: 'Mobile App', // You can pass actual user name here
+      );
+
+      if (response['status'] == 'success') {
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Leave Cancelled',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Text(
+                          'Leave cancelled for $staffName on ${_formatDate(date)}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF10B981),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+
+          // Refresh the attendance data
+          _onRefresh();
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Failed to cancel leave');
+      }
+    } catch (e) {
+      print('❌ Error cancelling leave: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Failed to Cancel Leave',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      Text(
+                        e.toString().replaceAll('Exception: ', ''),
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
+    }
+  }
   Widget _buildModernTimeChip({
     required IconData icon,
     required String time,

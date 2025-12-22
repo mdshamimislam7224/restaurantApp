@@ -72,7 +72,8 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   String deviceModel = '';
   bool isConnected = false;
   String errorMessage = '';
-
+  bool _isCameraPaused = false;
+  Completer<bool>? _apiResponseCompleter;
   // Performance optimization variables
   late FaceDetector detector;
   late Recognizer recognizer;
@@ -223,7 +224,44 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
       return false;
     }
   }
+  Future<void> _pauseCamera() async {
+    if (controller != null && controller.value.isStreamingImages) {
+      setState(() {
+        _isCameraPaused = true;
+      });
 
+      // Stop the image stream to prevent further processing
+      controller.stopImageStream();
+
+      // Also set isBusy to true to prevent any pending processing
+      isBusy = true;
+    }
+  }
+  Future<void> _resumeCamera() async {
+    if (controller != null && !controller.value.isStreamingImages) {
+      setState(() {
+        _isCameraPaused = false;
+      });
+
+      // Reset recognition states
+      isRecognized = false;
+      isErrorRecognized = false;
+      recognitions.clear();
+
+      // Restart the image stream
+      controller.startImageStream((image) {
+        if (!isBusy && mounted && !_isCameraPaused) {
+          isBusy = true;
+          Future.microtask(() => doFaceDetectionOnFrame(image));
+        }
+      });
+
+      // Reset busy flag after a short delay
+      Future.delayed(Duration(milliseconds: 100), () {
+        isBusy = false;
+      });
+    }
+  }
   Future<bool> fetchLocation() async {
     int retryCount = 0;
     const int maxRetries = 12;
@@ -490,8 +528,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   }
 
   Future<void> _handleRecognitionWithThreshold(Recognition recognition) async {
-    // Use a more lenient threshold for better accuracy
-    final recognitionThreshold = 1.0; // Adjust this based on your model
+    final recognitionThreshold = 1.0;
 
     if (recognition.distance > recognitionThreshold) {
       // Face not recognized
@@ -503,7 +540,6 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
           isErrorRecognized = true;
           isErrorRecognizedTimeCheck = true;
         });
-
         _recognitionTimer = Timer(Duration(seconds: 2), () {
           if (!_isDisposed && mounted) {
             setState(() {
@@ -519,15 +555,19 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
       username = recognition.name;
       _officialID = await sharedPrefsHelper.getOfficialID();
 
-      // Show success message immediately
+      // Pause camera processing
+      await _pauseCamera();
+
+      // Show success message
       setState(() {
         isRecognized = true;
       });
 
-      // Call sendData to check permissions via API
+      // Call API to check attendance
       await _punchAttendance("IN");
     }
   }
+
 
   // Performance logging
   void _logPerformance(String operation, Stopwatch stopwatch) {
@@ -1049,11 +1089,13 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     // Early validation
     if (_officialID == null || _officialID!.isEmpty) {
       showToast("User ID not found", Colors.red);
+      await _resumeCamera(); // Resume camera on error
       return;
     }
 
     if (latitude == null || longitude == null) {
       showToast("Location not available", Colors.red);
+      await _resumeCamera(); // Resume camera on error
       return;
     }
 
@@ -1070,6 +1112,9 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         throw Exception("Invalid location coordinates");
       }
 
+      // Create a completer to wait for API response
+      _apiResponseCompleter = Completer<bool>();
+
       // Call API
       final result = await _apiService.punchAttendance(
         staffId: _officialID!,
@@ -1078,6 +1123,9 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         longitude: lng,
         notes: 'Face Recognition Punch from mobile app',
       );
+
+      // API Success - Complete with true
+      _apiResponseCompleter?.complete(true);
 
       // Show success message
       if (mounted) {
@@ -1090,7 +1138,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         );
       }
 
-      // Navigate to HomeScreen after delay to show success message
+      // Navigate to HomeScreen after delay
       await Future.delayed(Duration(seconds: 1));
 
       if (mounted) {
@@ -1108,6 +1156,9 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     } catch (e) {
       print("Punch attendance error: $e");
 
+      // API Failed - Complete with false
+      _apiResponseCompleter?.complete(false);
+
       if (mounted) {
         // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1118,20 +1169,23 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
           ),
         );
 
-        // Reset recognition state to try again
+        // Reset recognition state
         setState(() {
           isRecognized = false;
           isErrorRecognized = true;
           errorMessage = 'API Error: ${e.toString()}';
         });
 
-        // Auto-reset after 3 seconds
-        Timer(Duration(seconds: 3), () {
+        // Resume camera after 3 seconds
+        Timer(Duration(seconds: 3), () async {
           if (mounted) {
             setState(() {
               isErrorRecognized = false;
               errorMessage = '';
             });
+
+            // Resume camera processing
+            await _resumeCamera();
           }
         });
       }
