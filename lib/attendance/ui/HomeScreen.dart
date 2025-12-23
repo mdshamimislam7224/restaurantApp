@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:restaurant_inventory/attendance/ui/AllStaffManualAttendanceScreen.dart';
 
+import '../../inventory_Expense_Accounting/InventoryScreen.dart';
 import 'AllStaffAttendanceScreen.dart';
 import 'AttendanceScreen.dart';
 import 'ProfileScreen.dart';
@@ -34,10 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
         staffName: widget.staffName,
       ),
       AllStaffAttendanceScreen(),
-      ProfileScreen(
-        staffId: widget.staffId,
-        staffName: widget.staffName,
-      ),
+      InventoryScreen(),
+
+      // ProfileScreen(
+      //   staffId: widget.staffId,
+      //   staffName: widget.staffName,
+      // ),
     ];
   }
 
