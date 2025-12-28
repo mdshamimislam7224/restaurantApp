@@ -12,6 +12,7 @@ import '../attendance/RecognitionScreen.dart';
 import '../attendance/ui/HomeScreen.dart';
 import '../calCulateCash/CashCalculationScreen.dart';
 import '../costing/CostingRecordScreen.dart';
+import '../financial_Management/financial_HomeScreen.dart';
 import '../localDB/DatabaseHelper.dart';
 import '../sell/CombinedSellManagementScreen.dart';
 import '../sharedPref/SharedPrefsHelper.dart';
@@ -60,6 +61,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         StaffListScreen(),
         combinedAddFoodListManagementScreen(),
         SalesDashboardScreen(),
+        financial_HomeScreen(),
         HomeScreen(
           staffId: staffId, // Replace with actual staff ID
           staffName: _staffName, // Replace with actual name

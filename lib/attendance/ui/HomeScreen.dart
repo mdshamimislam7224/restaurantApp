@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:restaurant_inventory/attendance/ui/AllStaffManualAttendanceScreen.dart';
-
-import '../../inventory_Expense_Accounting/InventoryScreen.dart';
+import '../../inventory_accessories/InventoryScreen.dart';
 import 'AllStaffAttendanceScreen.dart';
 import 'AttendanceScreen.dart';
-import 'ProfileScreen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String staffId;
