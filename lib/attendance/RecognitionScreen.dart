@@ -14,6 +14,8 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:restaurant_inventory/attendance/ui/HomeScreen.dart';
+import 'package:restaurant_inventory/attendance/ui/model_class/ApiServiceAttendance.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
@@ -29,14 +31,12 @@ import '../localDB/DatabaseHelper.dart';
 import '../main.dart';
 import '../sharedPref/SharedPrefsHelper.dart';
 
-
 class RecognitionScreen extends StatefulWidget {
   const RecognitionScreen({Key? key}) : super(key: key);
 
   @override
   _RecognitionScreen createState() => _RecognitionScreen();
 }
-
 class _RecognitionScreen extends State<RecognitionScreen> implements InternetCheckCallback {
   dynamic controller;
   bool isBusy = false;
@@ -50,8 +50,10 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   String? username;
   String? _imagePath;
   String? _officialID;
+  bool _isPunching = false;
   late Size size;
   bool _isDisposed = false;
+  final ApiServiceAttendance _apiService = ApiServiceAttendance();
   int successCounter = 0;
   late CameraDescription description = cameras[1];
   CameraLensDirection camDirec = CameraLensDirection.front;
@@ -70,7 +72,8 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   String deviceModel = '';
   bool isConnected = false;
   String errorMessage = '';
-
+  bool _isCameraPaused = false;
+  Completer<bool>? _apiResponseCompleter;
   // Performance optimization variables
   late FaceDetector detector;
   late Recognizer recognizer;
@@ -115,7 +118,8 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
 
     // Load model asynchronously
     await recognizer.loadModel();
-
+    // Wait a moment to ensure database is fully initialized
+    await Future.delayed(Duration(milliseconds: 100));
     // Check database status
     _checkDatabaseStatus();
 
@@ -220,7 +224,44 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
       return false;
     }
   }
+  Future<void> _pauseCamera() async {
+    if (controller != null && controller.value.isStreamingImages) {
+      setState(() {
+        _isCameraPaused = true;
+      });
 
+      // Stop the image stream to prevent further processing
+      controller.stopImageStream();
+
+      // Also set isBusy to true to prevent any pending processing
+      isBusy = true;
+    }
+  }
+  Future<void> _resumeCamera() async {
+    if (controller != null && !controller.value.isStreamingImages) {
+      setState(() {
+        _isCameraPaused = false;
+      });
+
+      // Reset recognition states
+      isRecognized = false;
+      isErrorRecognized = false;
+      recognitions.clear();
+
+      // Restart the image stream
+      controller.startImageStream((image) {
+        if (!isBusy && mounted && !_isCameraPaused) {
+          isBusy = true;
+          Future.microtask(() => doFaceDetectionOnFrame(image));
+        }
+      });
+
+      // Reset busy flag after a short delay
+      Future.delayed(Duration(milliseconds: 100), () {
+        isBusy = false;
+      });
+    }
+  }
   Future<bool> fetchLocation() async {
     int retryCount = 0;
     const int maxRetries = 12;
@@ -487,8 +528,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
   }
 
   Future<void> _handleRecognitionWithThreshold(Recognition recognition) async {
-    // Use a more lenient threshold for better accuracy
-    final recognitionThreshold = 1.0; // Adjust this based on your model
+    final recognitionThreshold = 1.0;
 
     if (recognition.distance > recognitionThreshold) {
       // Face not recognized
@@ -500,7 +540,6 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
           isErrorRecognized = true;
           isErrorRecognizedTimeCheck = true;
         });
-
         _recognitionTimer = Timer(Duration(seconds: 2), () {
           if (!_isDisposed && mounted) {
             setState(() {
@@ -516,78 +555,19 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
       username = recognition.name;
       _officialID = await sharedPrefsHelper.getOfficialID();
 
-      // Call sendData to check permissions via API
-      await _checkPermissionAndSendData();
+      // Pause camera processing
+      await _pauseCamera();
+
+      // Show success message
+      setState(() {
+        isRecognized = true;
+      });
+
+      // Call API to check attendance
+      await _punchAttendance("IN");
     }
   }
 
-  Future<void> _checkPermissionAndSendData() async {
-    print("Checking permissions and sending data...");
-    print("Username: $username");
-    print("Official ID: $_officialID");
-    if (!isRecognizedTimeCheck && !_isDisposed) {
-      setState(() {
-        isRecognizedTimeCheck = true;
-      });
-      // sendData(
-      //   onSuccess: (bool success) {
-      //     if (!_isDisposed && mounted) {
-      //       setState(() {
-      //         isRecognized = true;
-      //       });
-      //     }
-      //     _locationService.stopLocationUpdates();
-      //
-      //     // Navigate after showing success message
-      //     //Future.delayed(Duration(seconds: 1), () {
-      //     if (mounted) {
-      //       Navigator.pushReplacement(
-      //         context,
-      //         MaterialPageRoute(builder: (context) => Navigation_Class()),
-      //       );
-      //       showToast("Attendance submitted successfully!",Colors.green);
-      //     }
-      //     // });
-      //   },
-      //   onError: (String error) {
-      //     print('Error occurred: $error');
-      //     _locationService.stopLocationUpdates();
-      //     if (!_isDisposed && mounted) {
-      //       setState(() {
-      //         isRecognizedTimeCheck = false;
-      //         isErrorRecognized = true;
-      //         isErrorRecognizedTimeCheck = true;
-      //
-      //         // Set appropriate error message based on error type
-      //         if (error.contains('Permission Denied') ||
-      //             error.contains('"message":"Permission Denied!"')) {
-      //           errorMessage = 'Permission Denied!';
-      //           // Keep the recognized username and ID for permission denied cases
-      //         } else if (error.contains('not allow to remote check in') ||
-      //             error.contains('are not allow to remote check in')) {
-      //           errorMessage = 'Remote attendance not allowed';
-      //           // Keep the recognized username and ID
-      //         } else {
-      //           // For other errors
-      //           errorMessage = error;
-      //         }
-      //       });
-      //     }
-      //
-      //     _recognitionTimer?.cancel();
-      //     _recognitionTimer = Timer(Duration(seconds: 2), () {
-      //       if (!_isDisposed && mounted) {
-      //         setState(() {
-      //           isErrorRecognized = false;
-      //           isErrorRecognizedTimeCheck = false;
-      //           errorMessage = '';
-      //         });
-      //       }
-      //     });
-      //   },
-      // );
-    }
-  }
 
   // Performance logging
   void _logPerformance(String operation, Stopwatch stopwatch) {
@@ -745,90 +725,98 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
 
   @override
   Widget build(BuildContext context) {
-    List<Widget> stackChildren = [];
-    size = MediaQuery.of(context).size;
-    if (controller != null) {
-      stackChildren.add(
-        Positioned(
-          top: 0.0,
-          left: 0.0,
-          width: size.width,
-          height: size.height,
-          child: Container(
-            child: (controller.value.isInitialized)
-                ? ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.center,
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: SafeArea(
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              List<Widget> stackChildren = [];
+              size = MediaQuery.of(context).size;
+
+              if (controller != null) {
+                stackChildren.add(
+                  Positioned(
+                    top: 0.0,
+                    left: 0.0,
                     width: size.width,
-                    child: Transform(
-                      alignment: Alignment.center,
-                      // Mirror for front camera
-                      transform: Matrix4.identity()
-                        ..scale(
-                          camDirec == CameraLensDirection.front ? -1.0 : 1.0,
-                          1.0,
+                    height: size.height,
+                    child: Container(
+                      child: (controller.value.isInitialized)
+                          ? ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.center,
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: size.width,
+                              child: Transform(
+                                alignment: Alignment.center,
+                                // Mirror for front camera
+                                transform: Matrix4.identity()
+                                  ..scale(
+                                    camDirec == CameraLensDirection.front ? -1.0 : 1.0,
+                                    1.0,
+                                  ),
+                                child: CameraPreview(controller),
+                              ),
+                            ),
+                          ),
                         ),
-                      child: CameraPreview(controller),
+                      )
+                          : Container(),
                     ),
                   ),
-                ),
-              ),
-            )
-                : Container(),
+                );
+
+                stackChildren.add(
+                  Positioned(
+                    top: 0.0,
+                    left: 0.0,
+                    width: size.width,
+                    height: size.height,
+                    child: buildResult(),
+                  ),
+                );
+
+                if (isRecognized) {
+                  stackChildren.add(buildSuccessMessage());
+                } else if (isErrorRecognized) {
+                  stackChildren.add(buildErrorMessage());
+                }
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(15),
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                        ),
+                        child: Stack(
+                          children: stackChildren,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
-      );
-
-      stackChildren.add(
-        Positioned(
-          top: 0.0,
-          left: 0.0,
-          width: size.width,
-          height: size.height,
-          child: buildResult(),
-        ),
-      );
-
-      if (isRecognized) {
-        stackChildren.add(buildSuccessMessage());
-      } else if (isErrorRecognized) {
-        stackChildren.add(buildErrorMessage());
-      }
-    }
-
-    return SafeArea(
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: LayoutBuilder(builder: (context, constraints) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(15),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                    ),
-                    child: Stack(
-                      children: stackChildren,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        }),
       ),
     );
   }
 
   Widget buildSuccessMessage() {
+    bool isLoading = _isPunching;
+
     return Positioned(
       bottom: 0.0,
       left: 0.0,
@@ -837,7 +825,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
         margin: EdgeInsets.all(5),
         padding: EdgeInsets.all(5),
         decoration: BoxDecoration(
-          color: Colors.blue,
+          color: isLoading ? Colors.blueGrey : Colors.blue,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Stack(
@@ -845,6 +833,7 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Profile Image
                 Container(
                   width: 50,
                   height: 60,
@@ -858,52 +847,93 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
                         : null,
                     color: _imagePath == null ? Colors.grey[300] : null,
                   ),
-                  child: _imagePath == null ? Icon(Icons.person, size: 30, color: Colors.white) : null,
+                  child: _imagePath == null
+                      ? Icon(Icons.person, size: 30, color: Colors.white)
+                      : null,
                 ),
                 SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Status Text
                       Text(
-                        'Successfully data updated',
+                        isLoading
+                            ? 'Sending data...'
+                            : 'Face recognized!',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 16.0,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
+
+                      // User Info
                       Text(
                         'Name: $username',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16.0,
+                          fontSize: 14.0,
                         ),
                       ),
                       Text(
                         'ID: $_officialID',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16.0,
+                          fontSize: 14.0,
                         ),
                       ),
+
+                      // Loading indicator for punching
+                      if (isLoading)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 15,
+                                height: 15,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Sending attendance...',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.0,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
+
+                // Icon
+                if (!isLoading)
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.white,
+                    size: 24.0,
+                  ),
               ],
-            ),
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Icon(
-                Icons.check_circle_outline,
-                color: Colors.white,
-                size: 24.0,
-              ),
             ),
           ],
         ),
       ),
     );
+  }
+  Future<bool> _onWillPop() async {
+    // Prevent going back during recognition/punching
+    if (_isPunching) {
+      showToast("Please wait, processing attendance...", Colors.orange);
+      return false;
+    }
+    return true;
   }
 
   Widget buildErrorMessage() {
@@ -1055,94 +1085,118 @@ class _RecognitionScreen extends State<RecognitionScreen> implements InternetChe
     });
   }
 
-  // Future<void> sendData({
-  //   required Function(bool success) onSuccess,
-  //   required Function(String error) onError,
-  // }) async {
-  //   print("Here Send $latitude");
-  //   if (latitude != null && longitude != null) {
-  //     _locationService.stopLocationUpdates();
-  //
-  //     String? token = await variables.getAuthToken();
-  //     int? userId = await variables.getUserID();
-  //
-  //     DateTime now = DateTime.now();
-  //     String formattedDate = DateFormat('yyyy-MM-dd').format(now);
-  //     String formattedTime = DateFormat('HH:mm:ss').format(now);
-  //
-  //     print('Date: $formattedDate');
-  //     print('Time: $formattedTime');
-  //
-  //     Map<String, String> headers = {
-  //       'Content-Type': 'application/json',
-  //       'Authorization': 'Bearer $token',
-  //     };
-  //
-  //     Map<String, dynamic> body = {
-  //       "date": formattedDate,
-  //       "time": formattedTime,
-  //       "device": deviceName,
-  //       "model": deviceModel,
-  //       "latitude": latitude,
-  //       "longitude": longitude,
-  //       "employee": userId,
-  //     };
-  //
-  //     final client = http.Client();
-  //     try {
-  //       final response = await http
-  //           .post(
-  //         Uri.parse('${variables.base}/api/attendance/add-remote-log/'),
-  //         headers: headers,
-  //         body: jsonEncode(body),
-  //       )
-  //           .timeout(Duration(seconds: 10));
-  //
-  //       print("Response:${response.statusCode}");
-  //
-  //       if (response.statusCode == 200 || response.statusCode == 201) {
-  //         print('Remote Attendance Success: ${response.body}');
-  //         onSuccess(true);
-  //         latitude = '';
-  //         longitude = '';
-  //       } else {
-  //         String errorResponse = response.body;
-  //         print('Error: ${response.statusCode}, $errorResponse');
-  //
-  //         // Check for permission denied error
-  //         if (errorResponse.contains('Permission Denied') ||
-  //             errorResponse.contains('"message":"Permission Denied!"')) {
-  //           onError("PERMISSION_DENIED");
-  //         }
-  //         // Check for other specific errors
-  //         else if (errorResponse.contains('not allow to remote check in') ||
-  //             errorResponse.contains('are not allow to remote check in')) {
-  //           onError("REMOTE_CHECKIN_NOT_ALLOWED");
-  //         }
-  //         // General API error
-  //         else {
-  //           onError(errorResponse);
-  //         }
-  //
-  //         latitude = '';
-  //         longitude = '';
-  //       }
-  //     } catch (e) {
-  //       if (e is TimeoutException) {
-  //         print("Request timed out.");
-  //         onError("Request timed out");
-  //       } else {
-  //         print("Exception: $e");
-  //         onError("Exception: $e");
-  //       }
-  //     } finally {
-  //       client.close();
-  //     }
-  //   } else {
-  //     showToast("Location not found",Colors.red);
-  //     onError("Location not found");
-  //   }
-  // }
+  Future<void> _punchAttendance(String action) async {
+    // Early validation
+    if (_officialID == null || _officialID!.isEmpty) {
+      showToast("User ID not found", Colors.red);
+      await _resumeCamera(); // Resume camera on error
+      return;
+    }
+
+    if (latitude == null || longitude == null) {
+      showToast("Location not available", Colors.red);
+      await _resumeCamera(); // Resume camera on error
+      return;
+    }
+
+    setState(() {
+      _isPunching = true;
+    });
+
+    try {
+      // Parse coordinates
+      final lat = double.tryParse(latitude!);
+      final lng = double.tryParse(longitude!);
+
+      if (lat == null || lng == null) {
+        throw Exception("Invalid location coordinates");
+      }
+
+      // Create a completer to wait for API response
+      _apiResponseCompleter = Completer<bool>();
+
+      // Call API
+      final result = await _apiService.punchAttendance(
+        staffId: _officialID!,
+        action: action,
+        latitude: lat,
+        longitude: lng,
+        notes: 'Face Recognition Punch from mobile app',
+      );
+
+      // API Success - Complete with true
+      _apiResponseCompleter?.complete(true);
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully ${action.toLowerCase()}ed!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Navigate to HomeScreen after delay
+      await Future.delayed(Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(
+              staffId: _officialID!,
+              staffName: username ?? "User",
+            ),
+          ),
+        );
+      }
+
+    } catch (e) {
+      print("Punch attendance error: $e");
+
+      // API Failed - Complete with false
+      _apiResponseCompleter?.complete(false);
+
+      if (mounted) {
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to punch: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // Reset recognition state
+        setState(() {
+          isRecognized = false;
+          isErrorRecognized = true;
+          errorMessage = 'API Error: ${e.toString()}';
+        });
+
+        // Resume camera after 3 seconds
+        Timer(Duration(seconds: 3), () async {
+          if (mounted) {
+            setState(() {
+              isErrorRecognized = false;
+              errorMessage = '';
+            });
+
+            // Resume camera processing
+            await _resumeCamera();
+          }
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPunching = false;
+        });
+      }
+    }
+  }
 
   void showToast(String message,Color bgColor) {
     Fluttertoast.showToast(
