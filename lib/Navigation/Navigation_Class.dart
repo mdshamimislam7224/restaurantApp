@@ -61,11 +61,11 @@ class _Navigation_ClassState extends State<Navigation_Class> {
         StaffListScreen(),
         combinedAddFoodListManagementScreen(),
         SalesDashboardScreen(),
-        financial_HomeScreen(),
         HomeScreen(
           staffId: staffId, // Replace with actual staff ID
           staffName: _staffName, // Replace with actual name
-        )
+        ),
+        financial_HomeScreen()
       ];
     });
   }
@@ -83,6 +83,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     'Food List Management',
     'Sales Dashboard',
     "Attendance Management", // Added this 11th title
+    "Financial Management",
   ];
 
   // UPDATE: Add 11 colors to match 11 pages
@@ -98,6 +99,7 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     Colors.blue,
     Colors.blue,
     Colors.blue, // Added this 11th color
+    Colors.blue,
   ];
 
   void _onSelectItem(int index) {
@@ -325,6 +327,15 @@ class _Navigation_ClassState extends State<Navigation_Class> {
           leading: Icon(Icons.access_time),
           title: Text('Attendance Management'),
           onTap: () => _onSelectItem(10),
+        ),
+      );
+    }
+    if (_hasAccess('Financial Management')) {
+      drawerItems.add(
+        ListTile(
+          leading: Icon(Icons.access_time),
+          title: Text('Financial Management'),
+          onTap: () => _onSelectItem(11),
         ),
       );
     }
