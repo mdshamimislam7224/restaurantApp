@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../alertDialog/customDialog.dart';
 import 'CustomField.dart';
 import 'financial_ApiService.dart';
 
@@ -55,10 +56,12 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
 
   String selectedPaymentMethod = 'Cash';
   String selectedExpense = 'Food';
+  customDialog? customdialog;
 
   @override
   void initState() {
     super.initState();
+    customdialog = customDialog(context);
     fetchData();
   }
 
@@ -303,31 +306,37 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
                     );
                     return;
                   }
-
-                  if (double.tryParse(amount.text) == null) {
+                  else if (double.tryParse(amount.text) == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text("Please enter a valid amount"))
                     );
                     return;
                   }
-
-                  final result = await FinancialApiService.addExpense(
-                    selectedExpense,
-                    description.text,
-                    amount.text,
-                    selectedPaymentMethod,
-                  );
-
-                  if (result['success'] == true) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Expense saved successfully ✔"))
+                  else {
+                    customdialog!.showLoading("Saving...", subtitle: "Please wait");
+                    final result = await FinancialApiService.addExpense(
+                      selectedExpense,
+                      description.text,
+                      amount.text,
+                      selectedPaymentMethod,
                     );
-                    fetchData();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Failed to save ❌"))
-                    );
+                    if (result['success'] == true) {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Expense saved successfully ✔"))
+                      );
+                      fetchData();
+                    } else {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Failed to save ❌"))
+                      );
+                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -454,25 +463,34 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
                     );
                     return;
                   }
-
-                  final result = await FinancialApiService.updateExpense(
-                    id: item["ID"].toString(),
-                    category: selectedExpense,
-                    description: description.text,
-                    amount: amount.text,
-                    method: selectedPaymentMethod,
-                  );
-
-                  if (result['success'] == true) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Expense updated successfully ✔"))
+                  else {
+                    customdialog!.showLoading("Updating...", subtitle: "Please wait");
+                    final result = await FinancialApiService.updateExpense(
+                      id: item["ID"].toString(),
+                      category: selectedExpense,
+                      description: description.text,
+                      amount: amount.text,
+                      method: selectedPaymentMethod,
                     );
-                    fetchData();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Failed to update ❌"))
-                    );
+
+                    if (result['success'] == true) {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Expense updated successfully ✔"))
+                      );
+                      fetchData();
+                    } else {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Failed to update ❌"))
+                      );
+                    }
+
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -509,14 +527,20 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
     );
 
     if (confirm == true) {
+      customdialog!.showLoading("Deleting...", subtitle: "Please wait");
       final result = await FinancialApiService.deleteExpense(id);
-
       if (result['success'] == true) {
+        if (customdialog != null) {
+          customdialog!.dismiss();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Expense deleted successfully ✔"))
         );
         fetchData();
       } else {
+        if (customdialog != null) {
+          customdialog!.dismiss();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Failed to delete ❌"))
         );
@@ -572,8 +596,19 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
             ),
             SizedBox(height: 10),
             Text(
-              "Tap + to add your first expense",
+              "Tap the + button to add your first expense",
               style: TextStyle(color: Colors.grey[500]),
+            ),
+            SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: _showAddExpenseDialog,
+              icon: Icon(Icons.add),
+              label: Text("Add Your First Expense"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              ),
             ),
           ],
         ),
@@ -618,6 +653,12 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
                       ),
                       Text("Page Total", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                     ],
+                  ),
+                  SizedBox(width: 8),
+                  FloatingActionButton(
+                    onPressed: _showAddExpenseDialog,
+                    child: Icon(Icons.add, color: Colors.white),
+                    backgroundColor: Colors.red,
                   ),
                 ],
               ),
@@ -814,6 +855,7 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
       appBar: AppBar(
         title: Text("Expense Records"),
         actions: [
+          // Add button in AppBar
           IconButton(
             icon: Icon(Icons.filter_list),
             onPressed: _showFilterDialog,
@@ -827,12 +869,7 @@ class _AddExpenseScreenState extends State<financialadd_expense_screen> {
         ],
       ),
       body: _buildExpenseList(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddExpenseDialog,
-        child: Icon(Icons.add),
-        backgroundColor: Colors.red,
-        tooltip: "Add New Expense",
-      ),
+      // FloatingActionButton that's always visible
     );
   }
 }

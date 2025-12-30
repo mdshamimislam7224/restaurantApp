@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../alertDialog/customDialog.dart';
 import 'CustomField.dart';
 import 'financial_ApiService.dart';
 
@@ -18,7 +19,7 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
   final searchMethodController = TextEditingController();
   final startDateController = TextEditingController();
   final endDateController = TextEditingController();
-
+  customDialog? customdialog;
   // Data list for displaying records
   List data = [];
   bool loading = true;
@@ -55,6 +56,7 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
   @override
   void initState() {
     super.initState();
+    customdialog = customDialog(context);
     fetchData();
   }
 
@@ -301,31 +303,41 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
                     return;
                   }
 
-                  if (double.tryParse(amount.text) == null) {
+                  else if (double.tryParse(amount.text) == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text("Please enter a valid amount"))
                     );
                     return;
                   }
-
-                  final result = await FinancialApiService.addInvestment(
-                    selectedInvestment,
-                    description.text,
-                    amount.text,
-                    selectedPaymentMethod,
-                  );
-
-                  if (result['success'] == true) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Investment saved successfully ✔"))
+                  else{
+                    customdialog!.showLoading("Saving...", subtitle: "Please wait");
+                    final result = await FinancialApiService.addInvestment(
+                      selectedInvestment,
+                      description.text,
+                      amount.text,
+                      selectedPaymentMethod,
                     );
-                    fetchData();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Failed to save ❌"))
-                    );
+
+                    if (result['success'] == true) {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Investment saved successfully ✔"))
+                      );
+                      fetchData();
+                    } else {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Failed to save ❌"))
+                      );
+                    }
+
                   }
+
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -461,25 +473,45 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
                     );
                     return;
                   }
-
-                  final result = await FinancialApiService.updateInvestment(
-                    id: item["ID"].toString(),
-                    source: selectedInvestment,
-                    description: description.text,
-                    amount: amount.text,
-                    method: selectedPaymentMethod,
-                  );
-
-                  if (result['success'] == true) {
-                    Navigator.pop(context);
+                  else if (double.tryParse(amount.text) == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Investment updated successfully ✔"))
+                        SnackBar(content: Text("Invalid amount format"))
                     );
-                    fetchData();
-                  } else {
+                    return;
+                  }
+                  else if (description.text.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Failed to update ❌"))
+                        SnackBar(content: Text("Description is required"))
                     );
+                    return;
+                  }
+                  else{
+                    customdialog!.showLoading("Updating...", subtitle: "Please wait");
+                    final result = await FinancialApiService.updateInvestment(
+                      id: item["ID"].toString(),
+                      source: selectedInvestment,
+                      description: description.text,
+                      amount: amount.text,
+                      method: selectedPaymentMethod,
+                    );
+
+                    if (result['success'] == true) {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Investment updated successfully ✔"))
+                      );
+                      fetchData();
+                    } else {
+                      if (customdialog != null) {
+                        customdialog!.dismiss();
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Failed to update ❌"))
+                      );
+                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -516,14 +548,21 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
     );
 
     if (confirm == true) {
+      customdialog!.showLoading("Deleting...", subtitle: "Please wait");
       final result = await FinancialApiService.deleteInvestment(id);
 
       if (result['success'] == true) {
+        if (customdialog != null) {
+          customdialog!.dismiss();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Investment deleted successfully ✔"))
         );
         fetchData();
       } else {
+        if (customdialog != null) {
+          customdialog!.dismiss();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Failed to delete ❌"))
         );
@@ -582,6 +621,17 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
               "Tap + to add your first investment",
               style: TextStyle(color: Colors.grey[500]),
             ),
+            SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: _showAddInvestmentDialog,
+              icon: Icon(Icons.add),
+              label: Text("Add Your First Investment"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              ),
+            ),
           ],
         ),
       );
@@ -625,6 +675,14 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
                       ),
                       Text("Page Total", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                     ],
+                  ),
+                  SizedBox(width: 8),
+                  FloatingActionButton(
+                    onPressed: () {
+                      _showAddInvestmentDialog();
+                    },
+                    child: Icon(Icons.add, color: Colors.white),
+                    backgroundColor: Colors.purple,
                   ),
                 ],
               ),
@@ -834,12 +892,6 @@ class _AddInvestmentScreenState extends State<financial_add_investment_screen> {
         ],
       ),
       body: _buildInvestmentList(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddInvestmentDialog,
-        child: Icon(Icons.add),
-        backgroundColor: Colors.purple,
-        tooltip: "Add New Investment",
-      ),
     );
   }
 }

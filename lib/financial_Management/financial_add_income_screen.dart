@@ -531,6 +531,18 @@ class _AddIncomeScreenState extends State<financial_add_income_screen> {
               "Tap + to add your first income",
               style: TextStyle(color: Colors.grey[500]),
             ),
+
+            SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: _showAddIncomeDialog,
+              icon: Icon(Icons.add),
+              label: Text("Add Your First Income"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              ),
+            ),
           ],
         ),
       );
