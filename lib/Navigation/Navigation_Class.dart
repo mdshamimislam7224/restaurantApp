@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-
+import 'package:restaurant_inventory/attendance/ui/AttendanceScreen.dart';
 import '../Food List/combinedAddFoodListManagementScreen.dart';
 import '../Staff/StaffListScreen.dart';
 import '../Staff/StaffLoginPage.dart';
@@ -9,6 +9,7 @@ import '../Staff/StaffProfileScreen.dart';
 import '../Staff/StaffSinglePaymentDetailsScreen.dart';
 import '../admin/SalesDashboardScreen.dart';
 import '../attendance/RecognitionScreen.dart';
+import '../attendance/ui/AttendanceHierarchyScreen.dart';
 import '../attendance/ui/HomeScreen.dart';
 import '../calCulateCash/CashCalculationScreen.dart';
 import '../costing/CostingRecordScreen.dart';
@@ -34,10 +35,110 @@ class _Navigation_ClassState extends State<Navigation_Class> {
   List<Widget>? _pages;
   bool _isLoading = true;
 
+  // Track navigation history for back button
+  List<int> _navigationHistory = [0];
+
+  // Define all pages with their access roles
+  final List<PageConfig> _pageConfigs = [
+    PageConfig(
+      title: "Dashboard",
+      pageBuilder: (context, staffId, staffName) => CashCalculationScreen(),
+      allowedRoles: {'admin', 'staff'},
+      icon: Icons.dashboard,
+    ),
+    PageConfig(
+      title: 'Sell Management',
+      pageBuilder: (context, staffId, staffName) => CombinedSellManagementScreen(),
+      allowedRoles: {'admin', 'staff'},
+      icon: Icons.shopping_cart,
+    ),
+    PageConfig(
+      title: 'Costing Management',
+      pageBuilder: (context, staffId, staffName) => CostingRecordScreen(),
+      allowedRoles: {'admin', 'staff'},
+      icon: Icons.calculate,
+    ),
+    PageConfig(
+      title: 'Profile View',
+      pageBuilder: (context, staffId, staffName) => StaffProfileScreen(staffId: staffId),
+      allowedRoles: {'staff'}, // Staff only
+      icon: Icons.person,
+    ),
+    PageConfig(
+      title: "Payment View",
+      pageBuilder: (context, staffId, staffName) => StaffSinglePaymentDetailsScreen(
+        staffId: staffId,
+        staffJoiningDate: '', // Will be set later
+      ),
+      allowedRoles: {'staff'}, // Staff only
+      icon: Icons.payment,
+    ),
+    PageConfig(
+      title: 'Attendance',
+      pageBuilder: (context, staffId, staffName) => RecognitionScreen(),
+      allowedRoles: {'staff'}, // Staff only
+      icon: Icons.access_time,
+    ),
+    PageConfig(
+      title: 'Attendance Log',
+      pageBuilder: (context, staffId, staffName) => AttendanceScreen(
+        staffId: staffId,
+        staffName: staffName,
+      ),
+      allowedRoles: {'staff'}, // Staff only
+      icon: Icons.list_alt,
+    ),
+    PageConfig(
+      title: 'Staff Attendance Log',
+      pageBuilder: (context, staffId, staffName) => AttendanceHierarchyScreen(),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.history,
+    ),
+    PageConfig(
+      title: 'Staff Payment View',
+      pageBuilder: (context, staffId, staffName) => StaffPaymentDetailsScreen(),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.payment,
+    ),
+    PageConfig(
+      title: 'Staff List',
+      pageBuilder: (context, staffId, staffName) => StaffListScreen(),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.people,
+    ),
+    PageConfig(
+      title: 'Food List Management',
+      pageBuilder: (context, staffId, staffName) => combinedAddFoodListManagementScreen(),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.restaurant_menu,
+    ),
+    PageConfig(
+      title: 'Sales Dashboard',
+      pageBuilder: (context, staffId, staffName) => SalesDashboardScreen(),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.analytics,
+    ),
+    PageConfig(
+      title: 'Attendance Management',
+      pageBuilder: (context, staffId, staffName) => HomeScreen(
+        staffId: staffId,
+        staffName: staffName,
+      ),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.access_time,
+    ),
+    PageConfig(
+      title: 'Financial Management',
+      pageBuilder: (context, staffId, staffName) => financial_HomeScreen(),
+      allowedRoles: {'admin'}, // Admin only
+      icon: Icons.functions_outlined,
+    ),
+  ];
+
   Future<void> _loadUserData() async {
     final staffData = await _sharedPrefsHelper.getStaffLoginData();
     setState(() {
-      _userRole = staffData['userrole'] ?? '';
+      _userRole = staffData['userrole']?.toLowerCase() ?? '';
       _staffName = staffData['staff_name'] ?? '';
       _staffPosition = staffData['staff_position'] ?? '';
       staffId = staffData['staff_id'] ?? '';
@@ -46,109 +147,87 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       _isLoading = false;
     });
 
+    // Initialize pages
+    final accessiblePages = <Widget>[];
+
+    for (var config in _pageConfigs) {
+      if (_hasAccessToPage(config)) {
+        accessiblePages.add(config.pageBuilder(context, staffId, _staffName));
+      }
+    }
+
     setState(() {
-      _pages = [
-        CashCalculationScreen(),
-        CombinedSellManagementScreen(),
-        CostingRecordScreen(),
-        StaffProfileScreen(staffId: staffId),
-        StaffSinglePaymentDetailsScreen(
-          staffId: staffId,
-          staffJoiningDate: _staffJoningDate,
-        ),
-        RecognitionScreen(),
-        StaffPaymentDetailsScreen(),
-        StaffListScreen(),
-        combinedAddFoodListManagementScreen(),
-        SalesDashboardScreen(),
-        financial_HomeScreen(),
-        HomeScreen(
-          staffId: staffId, // Replace with actual staff ID
-          staffName: _staffName, // Replace with actual name
-        )
-      ];
+      _pages = accessiblePages;
     });
-  }
-
-  // UPDATE: Add 11 titles to match 11 pages
-  final List<String> _pageTitles = [
-    "Dashboard",
-    'Sell Management',
-    'Costing Management',
-    'Profile View',
-    "Payment View",
-    'Attendance',
-    'Staff Payment View',
-    'Staff List',
-    'Food List Management',
-    'Sales Dashboard',
-    "Attendance Management", // Added this 11th title
-  ];
-
-  // UPDATE: Add 11 colors to match 11 pages
-  final List<Color> _appBarColors = [
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue,
-    Colors.blue, // Added this 11th color
-  ];
-
-  void _onSelectItem(int index) {
-    setState(() {
-      _selectedDrawerIndex = index;
-    });
-    Navigator.pop(context);
   }
 
   Widget _buildDrawerHeader(BuildContext context) {
-    return DrawerHeader(
+    return Container(
+      height: 200, // Fixed height to prevent overflow
       decoration: BoxDecoration(color: Colors.blue),
       child: Stack(
         children: [
-          Align(
-            alignment: Alignment.topRight,
+
+          Positioned(
+            top: 10,
+            right: 10,
             child: IconButton(
-              icon: Icon(Icons.arrow_back, color: Colors.white),
+              icon: Icon(Icons.close, color: Colors.white, size: 24),
               onPressed: () => Navigator.pop(context),
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints(),
             ),
           ),
-          Align(
-            alignment: Alignment.center,
+          Center(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundImage: AssetImage('assets/freshbite_icon.png'),
+                  backgroundColor: Colors.white,
+                  child: Image.asset(
+                    'assets/freshbite_icon.png',
+                    width: 50,
+                    height: 50,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(Icons.restaurant, size: 30, color: Colors.blue);
+                    },
+                  ),
                 ),
-                SizedBox(height: 10),
+                SizedBox(height: 8),
                 Text(
                   'Fresh Bite',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      _staffName.isNotEmpty ? _staffName : 'User',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _staffName.isNotEmpty ? _staffName : 'User',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
-                    Text(
-                      _staffPosition.isNotEmpty ? "($_staffStatus)" : _staffStatus,
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                  ],
+                    maxLines: 1,
+                  ),
                 ),
-                SizedBox(height: 5),
+                SizedBox(height: 2),
+                if (_staffPosition.isNotEmpty)
+                  Text(
+                    _staffPosition,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                  ),
+                SizedBox(height: 4),
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
@@ -157,7 +236,11 @@ class _Navigation_ClassState extends State<Navigation_Class> {
                   ),
                   child: Text(
                     _userRole.toUpperCase(),
-                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -179,35 +262,9 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     }
   }
 
-  bool _hasAccess(String requiredRole) {
+  bool _hasAccessToPage(PageConfig config) {
     if (_userRole.isEmpty) return false;
-
-    // Convert both to lowercase for consistent comparison
-    String userRoleLower = _userRole.toLowerCase();
-    String requiredRoleLower = requiredRole.toLowerCase();
-
-    // Admin has access to most features but NOT to Profile View and Payment View
-    if (userRoleLower == 'admin') {
-      final adminHiddenFeatures = [
-        'payment view',
-      ];
-      return !adminHiddenFeatures.contains(requiredRoleLower);
-    }
-
-    // Staff only has access to specific features
-    if (userRoleLower == 'staff') {
-      final staffAccessibleFeatures = [
-        "dashboard",
-        'sell management',
-        'costing management',
-        'profile view',
-        "payment view",
-        'attendance',
-      ];
-      return staffAccessibleFeatures.contains(requiredRoleLower);
-    }
-
-    return false;
+    return config.allowedRoles.contains(_userRole.toLowerCase());
   }
 
   List<Widget> _getDrawerItems() {
@@ -215,116 +272,33 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       _buildDrawerHeader(context),
     ];
 
-    print('Building drawer for user: $_userRole');
+    // Create a list of accessible pages with their indices
+    final accessiblePageConfigs = <Map<String, dynamic>>[];
+    int pageIndex = 0;
 
-    // Check each menu item
-    if (_hasAccess('Dashboard')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.dashboard),
-          title: Text('Dashboard'),
-          onTap: () => _onSelectItem(0),
-        ),
-      );
+    for (int i = 0; i < _pageConfigs.length; i++) {
+      if (_hasAccessToPage(_pageConfigs[i])) {
+        accessiblePageConfigs.add({
+          'config': _pageConfigs[i],
+          'originalIndex': i,
+          'currentIndex': pageIndex,
+        });
+        pageIndex++;
+      }
     }
 
-    if (_hasAccess('Sell Management')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.shopping_cart),
-          title: Text('Sell Management'),
-          onTap: () => _onSelectItem(1),
-        ),
-      );
-    }
+    // Add accessible pages to drawer
+    for (var pageInfo in accessiblePageConfigs) {
+      final config = pageInfo['config'] as PageConfig;
+      final index = pageInfo['currentIndex'] as int;
 
-    if (_hasAccess('Costing Management')) {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.calculate),
-          title: Text('Costing Management'),
-          onTap: () => _onSelectItem(2),
-        ),
-      );
-    }
-
-    if (_hasAccess('Profile View')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.person),
-          title: Text('Profile View'),
-          onTap: () => _onSelectItem(3),
-        ),
-      );
-    }
-
-    if (_hasAccess('Payment View')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.payment),
-          title: Text('Payment View'),
-          onTap: () => _onSelectItem(4),
-        ),
-      );
-    }
-
-    if (_hasAccess('Attendance')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.access_time),
-          title: Text('Attendance'),
-          onTap: () => _onSelectItem(5),
-        ),
-      );
-    }
-
-    // Admin-only features
-    if (_hasAccess('Staff Payment View')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.payment),
-          title: Text('Staff Payment View'),
-          onTap: () => _onSelectItem(6),
-        ),
-      );
-    }
-
-    if (_hasAccess('Staff List')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.people),
-          title: Text('Staff List'),
-          onTap: () => _onSelectItem(7),
-        ),
-      );
-    }
-
-    if (_hasAccess('Food List Management')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.restaurant_menu),
-          title: Text('Food List Management'),
-          onTap: () => _onSelectItem(8),
-        ),
-      );
-    }
-
-    if (_hasAccess('Sales Dashboard')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.analytics),
-          title: Text('Sales Dashboard'),
-          onTap: () => _onSelectItem(9),
-        ),
-      );
-    }
-
-    if (_hasAccess('Attendance Management')) {
-      drawerItems.add(
-        ListTile(
-          leading: Icon(Icons.access_time),
-          title: Text('Attendance Management'),
-          onTap: () => _onSelectItem(10),
+          leading: Icon(config.icon),
+          title: Text(config.title),
+          onTap: () {
+            _navigateToPage(index);
+          },
         ),
       );
     }
@@ -339,8 +313,40 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       ),
     ]);
 
-    print('Total drawer items: ${drawerItems.length}');
     return drawerItems;
+  }
+
+  void _navigateToPage(int index) {
+    if (index != _selectedDrawerIndex) {
+      // Add current page to history if it's different
+      if (!_navigationHistory.contains(_selectedDrawerIndex)) {
+        _navigationHistory.add(_selectedDrawerIndex);
+      }
+
+      setState(() {
+        _selectedDrawerIndex = index;
+      });
+    }
+    Navigator.pop(context); // Close drawer
+  }
+
+  void _goBack() {
+    if (_navigationHistory.isNotEmpty && _navigationHistory.length > 1) {
+      // Remove current page
+      _navigationHistory.removeLast();
+      // Go to previous page
+      int previousIndex = _navigationHistory.last;
+
+      setState(() {
+        _selectedDrawerIndex = previousIndex;
+      });
+    } else if (_selectedDrawerIndex != 0) {
+      // If no history but not on dashboard, go to dashboard
+      setState(() {
+        _selectedDrawerIndex = 0;
+        _navigationHistory = [0];
+      });
+    }
   }
 
   @override
@@ -351,47 +357,115 @@ class _Navigation_ClassState extends State<Navigation_Class> {
       );
     }
 
-    // ADD SAFETY CHECK before accessing arrays
+    if (_pages!.isEmpty) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: Colors.red),
+              SizedBox(height: 20),
+              Text(
+                'No Access',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'You do not have access to any features.',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _logout,
+                child: Text('Logout'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Clamp selected index to valid range
     final safeIndex = _selectedDrawerIndex.clamp(0, _pages!.length - 1);
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: _selectedDrawerIndex < _appBarColors.length
-            ? _appBarColors[_selectedDrawerIndex]
-            : Colors.grey,
-        elevation: 0,
-        title: Text(
-          _selectedDrawerIndex < _pageTitles.length
-              ? _pageTitles[_selectedDrawerIndex]
-              : 'Unknown',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        centerTitle: true,
-        leading: _selectedDrawerIndex != 0
-            ? IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => setState(() { _selectedDrawerIndex = 0; }),
-        )
-            : Builder(
-          builder: (context) => IconButton(
-            icon: Icon(Icons.menu, color: Colors.white),
-            onPressed: () => Scaffold.of(context).openDrawer(),
+    // Find the corresponding page title
+    String pageTitle = "Dashboard";
+    int accessiblePageCount = 0;
+
+    for (int i = 0; i < _pageConfigs.length; i++) {
+      if (_hasAccessToPage(_pageConfigs[i])) {
+        if (accessiblePageCount == safeIndex) {
+          pageTitle = _pageConfigs[i].title;
+          break;
+        }
+        accessiblePageCount++;
+      }
+    }
+
+    return WillPopScope(
+      onWillPop: () async {
+        if (_selectedDrawerIndex != 0) {
+          _goBack();
+          return false; // Don't exit app
+        }
+        return true; // Exit app
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.blue,
+          elevation: 0,
+          title: Text(
+            pageTitle,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          centerTitle: true,
+          leading: _selectedDrawerIndex != 0
+              ? IconButton(
+            icon: Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _goBack,
+          )
+              : Builder(
+            builder: (context) => IconButton(
+              icon: Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          actions: [
+            if (_selectedDrawerIndex != 0)
+              IconButton(
+                icon: Icon(Icons.home, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _selectedDrawerIndex = 0;
+                    _navigationHistory = [0];
+                  });
+                },
+                tooltip: 'Go to Dashboard',
+              ),
+          ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(20),
+            ),
           ),
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(20),
-            bottomRight: Radius.circular(20),
+        drawer: Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: _getDrawerItems(),
           ),
         ),
+        body: _pages![safeIndex],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: _getDrawerItems(),
-        ),
-      ),
-      body: _pages![safeIndex], // Use safeIndex instead of _selectedDrawerIndex
     );
   }
 
@@ -405,15 +479,34 @@ class _Navigation_ClassState extends State<Navigation_Class> {
     final staffData = await _sharedPrefsHelper.getStaffLoginData();
     await _sharedPrefsHelper.removeStaffLoginData();
     await _sharedPrefsHelper.clearAll();
+
     DatabaseHelper databaseHelper = DatabaseHelper();
     await databaseHelper.init();
     final allRows = await databaseHelper.queryAllRows();
+
     if (allRows.isNotEmpty) {
       await databaseHelper.deleteUser(staffData['staff_id']?.toString() ?? '');
     }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => StaffLoginPage()),
     );
   }
+}
+
+// Helper class to define page configurations
+class PageConfig {
+  final String title;
+  final Widget Function(BuildContext context, String staffId, String staffName)
+  pageBuilder;
+  final Set<String> allowedRoles;
+  final IconData icon;
+
+  PageConfig({
+    required this.title,
+    required this.pageBuilder,
+    required this.allowedRoles,
+    required this.icon,
+  });
 }
